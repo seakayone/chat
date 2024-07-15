@@ -1,0 +1,9 @@
+[package]
+name = "chat"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ollama-rs = { version = "0.2.0", features = ["stream"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["full"] }
