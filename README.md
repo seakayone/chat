@@ -34,3 +34,10 @@ chat
 - Make it configurable to support different additional tools installed on the machine
 - Add support for more shells
 - Add support for other OSs
+
+## Know Issues
+
+These are known issue and will be fixed in the future:
+
+- Sometimes the model will not return only the command but also some explanation.
+- Very complex workflows might fail to generate the correct command.
