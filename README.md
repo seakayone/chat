@@ -16,6 +16,22 @@ Run Ollama in the background and pull the `codestral` LLM before using the chatb
 > ollama pull codestral
 ```
 
+## Build and Run
+
+Build the project by running:
+
+```zsh
+cargo build --release
+```
+
+Run the chat from cargo:
+
+```zsh
+cargo run
+```
+
+Install the chatbot by placing the binary in your path.
+
 ## Usage
 
 For now the chat is a simple terminal chatbot.
