@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
  * Do not surround the command with any additional characters like quotes or ```.
  * The answer must work on MacOS.
  * The answer must work on zsh.
- * You may use the following additional commands: jq, bat, fd, fzf, rg, xh
+ * Try to use the following additional commands: jq, bat, eza, fd, fzf, rg, xh
 
 The problem is: \
 "#.to_string();
