@@ -4,6 +4,10 @@ A simple natural language to shell command translator using Ollama with the `cod
 
 Currently it supports only zsh and MacOS.
 
+## Demo
+
+![Demo of chat in action](./assets/demo.gif)
+
 ## Pre-requisites
 
 [Ollama must be installed](https://ollama.com/) and up and running.
