@@ -12,8 +12,9 @@ The [`codestral`](https://ollama.com/library/codestral) model must be available.
 Run Ollama in the background and pull the `codestral` LLM before using the chatbot:
 
 ```zsh
-> ollama serve &
-> ollama pull codestral
+ollama serve &
+
+ollama pull codestral
 ```
 
 ## Build and Run
