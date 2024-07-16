@@ -31,7 +31,7 @@ Run the chat from cargo:
 cargo run
 ```
 
-Install the chatbot by placing the binary in your path.
+Install the chatbot by placing the binary from `target/release/chat` in your path.
 
 ## Usage
 
