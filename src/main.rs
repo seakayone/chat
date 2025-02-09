@@ -22,9 +22,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 The problem is: \
 "#.to_string();
+
+    let model_name = "codestral:latest";
+
     let ollama = Ollama::default();
 
     let mut stdout = stdout();
+
+    let _ = ollama
+        .show_model_info(model_name.to_string())
+        .await
+        .expect("Failed to get model info, is Ollama server running?");
+
+    stdout
+        .write_all(format!("Running model {}\n", model_name).as_bytes())
+        .await?;
+    stdout.flush().await?;
 
     loop {
         stdout.write_all(b"\n> ").await?;
@@ -40,7 +53,7 @@ The problem is: \
 
         let prompt = prompt.to_owned() + input;
 
-        let request = GenerationRequest::new("codestral:latest".into(), prompt);
+        let request = GenerationRequest::new(model_name.into(), prompt);
 
         let mut stream = ollama.generate_stream(request).await?;
 
