@@ -1,10 +1,39 @@
+#![warn(clippy::all, clippy::pedantic)]
+
+use clap::{Parser, Subcommand};
+use color_eyre::Result;
 use ollama_rs::{generation::completion::request::GenerationRequest, Ollama};
 use tokio::io::{stdout, AsyncWriteExt};
 use tokio_stream::StreamExt;
 
+#[derive(Parser)]
+#[command(version)]
+struct Cli {
+    #[command(subcommand)]
+    cmd: Option<Cmd>,
+}
+impl Cli {
+    fn cmd(&self) -> Cmd {
+        self.cmd.clone().unwrap_or(Cmd::Run)
+    }
+}
+
+#[derive(Subcommand, Debug, Clone)]
+enum Cmd {
+    /// Run the application interactively (default)
+    Run,
+}
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let prompt = r#"
+async fn main() -> Result<()> {
+    let args = Cli::parse();
+    match args.cmd() {
+        Cmd::Run => run().await,
+    }
+}
+
+async fn run() -> Result<()> {
+    let prompt = r"
  Your are Chatty, a natural language to zsh shell command translation engine for MacOS.
  You are an expert in zsh on MacOs and solve the problem at the end of the prompt with a zsh command.
 
@@ -21,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
  * Try to use the following additional commands: jq, bat, eza, fd, fzf, rg, xh
 
 The problem is: \
-"#.to_string();
+".to_string();
 
     let model_name = "codestral:latest";
 
@@ -35,7 +64,7 @@ The problem is: \
         .expect("Failed to get model info, is Ollama server running?");
 
     stdout
-        .write_all(format!("Running model {}\n", model_name).as_bytes())
+        .write_all(format!("Running model {model_name}\n").as_bytes())
         .await?;
     stdout.flush().await?;
 
@@ -51,19 +80,19 @@ The problem is: \
             break;
         }
 
-        let prompt = prompt.to_owned() + input;
+        let prompt = prompt.clone() + input;
 
         let request = GenerationRequest::new(model_name.into(), prompt);
 
         let mut stream = ollama.generate_stream(request).await?;
 
-        let mut solution = "".to_string();
+        let mut solution = String::new();
         while let Some(Ok(res)) = stream.next().await {
             for ele in res {
                 solution += ele.response.as_str();
             }
         }
-        println!("{}", solution);
+        println!("{solution}");
     }
 
     Ok(())
