@@ -40,7 +40,6 @@ fn get_history_path() -> Option<PathBuf> {
 
 /// Load history from the cache file.
 /// Returns an empty Vec if the file doesn't exist, is empty, or cannot be read.
-#[allow(dead_code)] // Used in US-003
 async fn load_history() -> Vec<String> {
     let Some(path) = get_history_path() else {
         return Vec::new();
@@ -126,7 +125,6 @@ enum AppState {
 }
 
 /// Application state for the TUI
-#[derive(Default)]
 struct App {
     /// Current input text
     input: String,
@@ -140,9 +138,26 @@ struct App {
     generated_options: Vec<CommandOption>,
     /// Currently selected command index (0-based)
     selected_index: usize,
+    /// History of previous queries (most recent first)
+    #[allow(dead_code)] // Used in US-004/US-005/US-006
+    history: Vec<String>,
 }
 
 impl App {
+    /// Create a new App instance, loading history from cache
+    async fn new() -> Self {
+        let history = load_history().await;
+        Self {
+            input: String::new(),
+            cursor_position: 0,
+            state: AppState::default(),
+            loading_tick: 0,
+            generated_options: Vec::new(),
+            selected_index: 0,
+            history,
+        }
+    }
+
     /// Insert a character at the cursor position
     fn insert_char(&mut self, c: char) {
         self.input.insert(self.cursor_position, c);
@@ -468,7 +483,7 @@ fn render_ui(app: &App, frame: &mut ratatui::Frame) {
 async fn run_tui_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
 ) -> Result<Option<String>> {
-    let mut app = App::default();
+    let mut app = App::new().await;
 
     // Handle for the async LLM generation task
     let mut llm_task: Option<tokio::task::JoinHandle<Result<Vec<CommandOption>>>> = None;
