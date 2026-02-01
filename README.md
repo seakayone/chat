@@ -1,6 +1,6 @@
 # Chat
 
-A simple natural language to shell command translator using Ollama with the `codestral` LLM.
+A simple natural language to shell command translator using Ollama with an LLM.
 
 Currently it supports only zsh and MacOS.
 
@@ -11,14 +11,13 @@ Currently it supports only zsh and MacOS.
 ## Pre-requisites
 
 [Ollama must be installed](https://ollama.com/) and up and running.
-The [`codestral`](https://ollama.com/library/codestral) model must be available.
-
-Run Ollama in the background and pull the `codestral` LLM before using the chatbot:
+Run Ollama in the background:
 
 ```zsh
 ollama serve &
 
-ollama pull codestral
+# next command is only necessary once
+ollama pull <llm_model_name> 
 ```
 
 ## Build and Run

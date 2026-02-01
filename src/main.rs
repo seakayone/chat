@@ -52,7 +52,7 @@ async fn run() -> Result<()> {
 The problem is: \
 ".to_string();
 
-    let model_name = "codestral:latest";
+    let model_name = "qwen3-coder:latest";
 
     let ollama = Ollama::default();
 

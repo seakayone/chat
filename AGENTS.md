@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project Overview
 
-Chat is a natural language to zsh shell command translator for macOS. It uses Ollama with the `codestral` model to convert English descriptions into shell commands.
+Chat is a natural language to zsh shell command translator for macOS. It uses Ollama with the ai models to convert English descriptions into shell commands.
 
 ## Build and Run
 
@@ -19,7 +19,7 @@ cargo run
 cargo clippy
 ```
 
-**Prerequisites:** Ollama must be running (`ollama serve`) with the `codestral` model pulled (`ollama pull codestral`).
+**Prerequisites:** Ollama must be running (`ollama serve`) with the necessary mode (use `ollama pull <image_name>` to pull).
 
 ## Architecture
 
