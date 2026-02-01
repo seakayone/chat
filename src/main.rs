@@ -13,7 +13,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
     Terminal,
 };
 use std::io;
@@ -67,8 +67,7 @@ enum AppState {
     Input,
     /// Waiting for LLM response
     Loading,
-    /// Commands have been generated and are ready for selection (used in US-005)
-    #[allow(dead_code)]
+    /// Commands have been generated and are ready for selection
     SelectingCommand,
 }
 
@@ -84,8 +83,9 @@ struct App {
     /// Counter for loading animation (used for spinner)
     loading_tick: usize,
     /// Generated command options from LLM (populated after loading completes)
-    #[allow(dead_code)]
     generated_options: Vec<CommandOption>,
+    /// Currently selected command index (0-based)
+    selected_index: usize,
 }
 
 impl App {
@@ -168,6 +168,7 @@ impl App {
     fn complete_loading(&mut self) {
         if self.state == AppState::Loading {
             self.state = AppState::SelectingCommand;
+            self.selected_index = 0;
         }
     }
 }
@@ -346,15 +347,7 @@ async fn run_tui_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> 
                     render_loading(&app, frame, chunks[1]);
                 }
                 AppState::SelectingCommand => {
-                    // Placeholder for command selection UI (will be implemented in US-005)
-                    let placeholder_block = Block::default()
-                        .title(" Commands ")
-                        .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Green));
-                    let placeholder = Paragraph::new("Commands will appear here...")
-                        .block(placeholder_block)
-                        .style(Style::default().fg(Color::Gray));
-                    frame.render_widget(placeholder, chunks[1]);
+                    render_command_list(&app, frame, chunks[1]);
                 }
             }
         })?;
@@ -513,6 +506,50 @@ fn render_loading(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::
         .style(Style::default().fg(Color::Yellow));
 
     frame.render_widget(loading, area);
+}
+
+/// Render the command options list
+fn render_command_list(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+    let commands_block = Block::default()
+        .title(" Commands ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Green));
+
+    // Build list items from generated options
+    let items: Vec<ListItem> = app
+        .generated_options
+        .iter()
+        .enumerate()
+        .map(|(i, opt)| {
+            let is_selected = i == app.selected_index;
+
+            // Format: "N. command"
+            let content = format!("{}. {}", i + 1, opt.command);
+
+            // Style based on whether this is the selected item
+            let style = if is_selected {
+                Style::default()
+                    .bg(Color::Cyan)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+
+            ListItem::new(Line::from(Span::styled(content, style)))
+        })
+        .collect();
+
+    // Handle case where there are no options
+    if items.is_empty() {
+        let no_options = Paragraph::new("No commands generated. Press Esc to try again.")
+            .block(commands_block)
+            .style(Style::default().fg(Color::Gray));
+        frame.render_widget(no_options, area);
+    } else {
+        let list = List::new(items).block(commands_block);
+        frame.render_widget(list, area);
+    }
 }
 
 async fn run() -> Result<()> {
