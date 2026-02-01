@@ -584,9 +584,12 @@ fn render_ui(app: &App, frame: &mut ratatui::Frame) {
 
                 render_history_dropdown(app, &filtered, frame, sub_chunks[0]);
 
-                // Render help text below
-                let help_text =
-                    "↑/↓ Navigate history  Enter Select  Type to filter. Esc to quit.";
+                // Render help text below - include delete hint only when entry is selected
+                let help_text = if app.history_index.is_some() {
+                    "↑/↓ Navigate  Enter Select  x Delete  Esc Quit"
+                } else {
+                    "↑/↓ Navigate  Enter Select  Type to filter  Esc Quit"
+                };
                 let status_block = Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(Color::DarkGray));
