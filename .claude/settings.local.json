@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Skill(agent-context-loader)"
+      "Skill(agent-context-loader)",
+      "Bash(cargo check:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo run:*)"
     ]
   }
 }
