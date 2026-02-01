@@ -15,9 +15,6 @@ cargo build --release
 # Run (launches TUI by default)
 cargo run
 
-# Run legacy CLI mode
-cargo run -- run
-
 # Lint (strict pedantic mode enabled via #![warn(clippy::all, clippy::pedantic)])
 cargo clippy
 ```
@@ -27,11 +24,14 @@ cargo clippy
 ## Configuration
 
 The model can be configured via (in priority order):
+
 1. `CHAT_MODEL` environment variable
 2. Config file (`~/Library/Application Support/chat/config.toml` on macOS, `~/.config/chat/config.toml` on Linux):
+
    ```toml
    model = "qwen3-coder:latest"
    ```
+
 3. Default: `qwen3-coder:latest`
 
 On startup, the app verifies Ollama is running and the model is installed, showing a progress indicator while loading.
@@ -58,6 +58,7 @@ The application provides an interactive terminal interface with:
 5. **Clipboard integration** - Selected command is copied to clipboard on exit
 
 **Keyboard shortcuts:**
+
 - `Enter` - Submit query / Select command / Select history item
 - `↑/↓` - Navigate command options or history dropdown
 - `←/→` - Move cursor in input
@@ -68,17 +69,15 @@ The application provides an interactive terminal interface with:
 - `Ctrl+C` - Force exit
 
 **History:**
+
 - Previous queries are saved and shown in a dropdown while typing
 - History is filtered as you type (case-insensitive)
 - Stored in `~/Library/Caches/chat/history` (macOS) or `~/.cache/chat/history` (Linux)
 
-### Legacy CLI Mode (`run` subcommand)
-
-Simple REPL that reads input, queries the LLM, and prints a single command. Type "exit" to quit.
-
 ### LLM Response Format
 
 The TUI mode uses a structured prompt that requests 1-3 command options in the format:
+
 ```
 1. command | explanation
 2. command | explanation
