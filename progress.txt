@@ -5,7 +5,61 @@
 - Ollama is used for LLM generation with streaming support
 - For ratatui Layout constraints, pass arrays directly (not `.as_ref()`) due to palette feature conflicts
 - For non-blocking async in TUI: spawn with `tokio::spawn`, check `is_finished()` each loop iteration
+- Extract rendering/large functions to helpers to stay under clippy's 100-line function limit
 
+---
+
+## 2026-02-01 - US-009
+- Implemented paste selected command to CLI
+- Files changed: src/main.rs, Cargo.toml
+- **What was implemented:**
+  - Added `arboard` crate (v3) for cross-platform clipboard support
+  - Created `copy_to_clipboard()` function using arboard's Clipboard API
+  - Modified `run_tui_loop()` to return `Option<String>` with selected command
+  - Updated `run_tui()` to copy selected command to clipboard on exit
+  - Displays colored status message after TUI closes:
+    - Green checkmark with "Command copied to clipboard" on success
+    - Yellow warning with fallback instructions if clipboard fails
+  - Command is shown in bold, with "Paste with Cmd+V to use" instructions
+- **Learnings for future iterations:**
+  - TIOCSTI is disabled on modern macOS for security; clipboard is the reliable approach
+  - The `arboard` crate provides cross-platform clipboard access without needing pbcopy
+  - Returning `Option<String>` from the TUI loop cleanly separates selection from action
+  - ANSI escape codes work for terminal styling after TUI restore: `\x1b[32m` for green, `\x1b[1m` for bold
+---
+
+## 2026-02-01 - US-008
+- Implemented regenerate option for re-querying the LLM
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Added `regenerate()` method to App struct that transitions back to Loading state
+  - Method clears `generated_options` and resets `loading_tick` for fresh spinner animation
+  - Added 'r' hotkey handler in `SelectingCommand` state to trigger regeneration
+  - Spawns new LLM task with the same input query when 'r' is pressed
+  - Updated `render_command_list()` layout to include hint line between commands and explanation
+  - Added keyboard hint showing: ↑/↓ Navigate  Enter Select  r Regenerate  Esc Cancel
+  - Layout now uses three constraints: Length(5) for commands, Length(1) for hints, Min(3) for explanation
+- **Learnings for future iterations:**
+  - Hint line improves UX by showing available keyboard shortcuts
+  - Reusing existing LLM task spawning pattern makes regeneration straightforward
+  - Clearing `generated_options` ensures clean state before new options arrive
+---
+
+## 2026-02-01 - US-007
+- Implemented arrow-key navigation for command selection
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Added `select_previous()` method with wrap-around (up from first goes to last)
+  - Added `select_next()` method with wrap-around (down from last goes to first)
+  - Added `confirm_selection()` method returning the selected command option
+  - Added Up/Down arrow key handlers in `SelectingCommand` state
+  - Added Enter key handler to confirm selection and exit
+  - Extracted `render_ui()` function from `run_tui_loop()` to fix clippy too-many-lines warning
+  - Fixed doc_markdown lint by adding backticks around `SelectingCommand` in doc comment
+- **Learnings for future iterations:**
+  - Clippy pedantic enforces 100-line function limit; extract render helpers to stay under
+  - Esc key was already implemented to return to input state from SelectingCommand
+  - The `confirm_selection()` returns reference to option; US-009 will handle pasting the command
 ---
 
 ## 2026-02-01 - US-001

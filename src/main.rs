@@ -341,6 +341,13 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Re
     Ok(())
 }
 
+/// Copy command to clipboard using arboard
+fn copy_to_clipboard(command: &str) -> Result<(), arboard::Error> {
+    let mut clipboard = arboard::Clipboard::new()?;
+    clipboard.set_text(command)?;
+    Ok(())
+}
+
 /// Run the TUI application
 async fn run_tui() -> Result<()> {
     let mut terminal = setup_terminal()?;
@@ -350,7 +357,23 @@ async fn run_tui() -> Result<()> {
     // Always restore terminal, even if there was an error
     restore_terminal(&mut terminal)?;
 
-    result
+    // Handle the selected command
+    if let Ok(Some(command)) = &result {
+        // Try to copy to clipboard
+        if copy_to_clipboard(command).is_ok() {
+            // Print the command and instructions
+            println!("\n\x1b[32m✓\x1b[0m Command copied to clipboard:");
+            println!("\x1b[1m{command}\x1b[0m");
+            println!("\nPaste with \x1b[33mCmd+V\x1b[0m to use.");
+        } else {
+            // Clipboard failed, just print the command
+            println!("\n\x1b[33m!\x1b[0m Selected command:");
+            println!("\x1b[1m{command}\x1b[0m");
+            println!("\nCopy and paste to use.");
+        }
+    }
+
+    result.map(|_| ())
 }
 
 /// Render the entire UI based on app state
@@ -387,11 +410,17 @@ fn render_ui(app: &App, frame: &mut ratatui::Frame) {
 }
 
 /// Main TUI event loop
-async fn run_tui_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
+/// Returns the selected command if one was chosen, None if user cancelled
+async fn run_tui_loop(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+) -> Result<Option<String>> {
     let mut app = App::default();
 
     // Handle for the async LLM generation task
     let mut llm_task: Option<tokio::task::JoinHandle<Result<Vec<CommandOption>>>> = None;
+
+    // Selected command to return
+    let mut selected_command: Option<String> = None;
 
     loop {
         terminal.draw(|frame| render_ui(&app, frame))?;
@@ -460,10 +489,9 @@ async fn run_tui_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> 
                             app.select_next();
                         }
                         KeyCode::Enter if app.state == AppState::SelectingCommand => {
-                            // Confirm selection - for now, just print selected and exit
+                            // Confirm selection and return the command
                             if let Some(selected) = app.confirm_selection() {
-                                // Store the command for later use (US-009 will handle pasting)
-                                let _selected_command = selected.command.clone();
+                                selected_command = Some(selected.command.clone());
                                 break;
                             }
                         }
@@ -491,7 +519,7 @@ async fn run_tui_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> 
         }
     }
 
-    Ok(())
+    Ok(selected_command)
 }
 
 /// Render the text input widget
