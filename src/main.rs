@@ -39,6 +39,25 @@ fn get_config_path() -> Option<PathBuf> {
     Some(config_dir.join("chat").join("config.toml"))
 }
 
+/// Check if Ollama API is running by calling GET /api/tags.
+/// Returns Ok(()) if Ollama is reachable, Err with message otherwise.
+/// Uses a 5 second timeout.
+async fn check_ollama_running() -> Result<(), String> {
+    let ollama = Ollama::default();
+
+    // Use tokio timeout to limit the check to 5 seconds
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        ollama.list_local_models(),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(_)) | Err(_) => Err("Error: Ollama is not running. Please start Ollama and try again.".to_string()),
+    }
+}
+
 /// Load the model name from configuration.
 /// Priority: 1. `CHAT_MODEL` env var, 2. config file, 3. default
 fn get_model_name() -> String {
@@ -562,6 +581,12 @@ fn copy_to_clipboard(command: &str) -> Result<(), arboard::Error> {
 
 /// Run the TUI application
 async fn run_tui() -> Result<()> {
+    // Check if Ollama is running before entering TUI mode
+    if let Err(msg) = check_ollama_running().await {
+        eprintln!("{msg}");
+        std::process::exit(1);
+    }
+
     let mut terminal = setup_terminal()?;
 
     let result = run_tui_loop(&mut terminal).await;
