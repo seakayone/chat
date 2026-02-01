@@ -369,3 +369,16 @@
   - The `KeyAction` enum pattern cleanly separates key handling from side effects
   - Reuse the same async save pattern for consistency: clone history, spawn task, fire-and-forget
 ---
+
+## 2026-02-01 - US-001 (History Delete Hint)
+- Implemented visual hint showing users can press 'x' to delete selected history entry
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Modified help text in `render_ui()` to show different hints based on selection state
+  - When history entry is selected (`history_index.is_some()`): shows "↑/↓ Navigate  Enter Select  x Delete  Esc Quit"
+  - When no entry is selected: shows "↑/↓ Navigate  Enter Select  Type to filter  Esc Quit"
+  - Help text style follows existing pattern (consistent formatting with other hint lines)
+- **Learnings for future iterations:**
+  - Conditional help text based on state is a simple if/else pattern
+  - Keep hint text concise and consistent with existing UI patterns
+---

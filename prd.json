@@ -1,0 +1,21 @@
+{
+  "project": "Chat",
+  "branchName": "ralph/history-delete-hint",
+  "description": "History Delete Hint - Add visual hint showing users can press 'x' to delete selected history entry",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Show delete hint in help text when entry selected",
+      "description": "As a user, I want to see that I can press 'x' to delete so I can remove unwanted history entries.",
+      "acceptanceCriteria": [
+        "Help text shows 'x Delete' when a history entry is selected",
+        "Delete hint not shown when no entry is selected",
+        "Hint integrates with existing help text style (e.g., '↑/↓ Navigate  Enter Select  x Delete  Esc Quit')",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}
