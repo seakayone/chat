@@ -369,6 +369,18 @@ impl App {
         self.history_index = None;
     }
 
+    /// Delete the currently selected history entry.
+    /// Returns true if an entry was deleted, false otherwise.
+    fn delete_history_entry(&mut self) -> bool {
+        if let Some(idx) = self.history_index {
+            if idx < self.history.len() {
+                self.history.remove(idx);
+                return true;
+            }
+        }
+        false
+    }
+
     /// Get the filtered history entries based on current input.
     /// If input is empty, returns all history entries.
     /// Otherwise, filters to entries containing the input text (case-insensitive substring match).
@@ -667,6 +679,14 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> KeyAction {
         KeyCode::Right if app.is_input_enabled() => app.move_cursor_right(),
         KeyCode::Home if app.is_input_enabled() => app.move_cursor_home(),
         KeyCode::End if app.is_input_enabled() => app.move_cursor_end(),
+        // Delete history entry - only when dropdown is visible AND entry is selected
+        KeyCode::Char('x')
+            if app.is_input_enabled()
+                && should_show_history_dropdown(app)
+                && app.history_index.is_some() =>
+        {
+            app.delete_history_entry();
+        }
         KeyCode::Char(c) if app.is_input_enabled() => app.insert_char(c),
         _ => {}
     }
