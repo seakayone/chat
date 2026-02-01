@@ -4,7 +4,11 @@
       "Skill(agent-context-loader)",
       "Bash(cargo check:*)",
       "Bash(cargo clippy:*)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "Bash(cargo clean:*)",
+      "Bash(cargo build:*)",
+      "Bash(RUSTFLAGS=\"-W unused\" cargo check:*)",
+      "Bash(cargo tree:*)"
     ]
   }
 }

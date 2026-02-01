@@ -9,7 +9,6 @@ color-eyre = "0.6.3"
 crossterm = "0.28.1"
 ollama-rs = { version = "0.2.5", features = ["stream"] }
 ratatui = { version = "0.29.0", features = ["serde", "macros", "palette"] }
-thiserror = "2.0.11"
 tokio = { version = "1.43.0", features = ["full"] }
 tokio-stream = { version = "0.1.17", features = ["full"] }
 arboard = "3"
