@@ -13,3 +13,5 @@ tokio = { version = "1.43.0", features = ["full"] }
 tokio-stream = { version = "0.1.17", features = ["full"] }
 arboard = "3"
 dirs = "5"
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
