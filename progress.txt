@@ -328,3 +328,44 @@
   - Removing `#[derive(Default)]` requires all fields to be initialized in constructor
   - `#[allow(dead_code)]` on struct fields is useful when fields are planned for future user stories
 ---
+
+## 2026-02-01 - US-001 (Delete History Entry)
+- Implemented delete selected history entry with 'x' key
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Added `delete_history_entry()` method to App struct that removes entry at `history_index`
+  - Added 'x' key handler in `handle_key_event()` that only triggers when:
+    - Input is enabled (in Input state)
+    - History dropdown is visible (filtered_history is non-empty)
+    - An entry is selected (history_index is Some)
+  - Normal 'x' typing works when no entry is selected (falls through to generic Char handler)
+- **Learnings for future iterations:**
+  - Guard conditions on key handlers can be stacked with `if ... && ... && ...` for precise behavior
+  - Order of match arms matters - specific cases before generic ones (e.g., 'x' before Char(c))
+---
+
+## 2026-02-01 - US-002 (Delete History Entry)
+- Implemented clear selection after deletion
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Modified `delete_history_entry()` to set `history_index = None` after removing entry
+  - Dropdown visibility is already handled by `should_show_history_dropdown()` which checks `filtered_history().is_empty()`
+  - When all entries are deleted, dropdown automatically hides
+- **Learnings for future iterations:**
+  - Checking existing helper functions before implementing new logic - `should_show_history_dropdown` already handled visibility
+  - State cleanup (resetting index to None) should be done in the same method that modifies the underlying data
+---
+
+## 2026-02-01 - US-003 (Delete History Entry)
+- Implemented persist deletion to history file
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Added `SaveHistory` variant to `KeyAction` enum for signaling history save after deletion
+  - Modified 'x' key handler to return `KeyAction::SaveHistory` after successful deletion
+  - Added `KeyAction::SaveHistory` handler in `run_tui_loop` that spawns async save task
+  - Uses fire-and-forget pattern with `tokio::spawn` for non-blocking file write
+  - `save_history()` silently ignores errors (existing behavior handles graceful failure)
+- **Learnings for future iterations:**
+  - The `KeyAction` enum pattern cleanly separates key handling from side effects
+  - Reuse the same async save pattern for consistency: clone history, spawn task, fire-and-forget
+---
