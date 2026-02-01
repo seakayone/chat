@@ -158,24 +158,30 @@ impl App {
         }
     }
 
-    /// Insert a character at the cursor position
+    /// Insert a character at the cursor position.
+    /// Resets history selection since the filtered list may change.
     fn insert_char(&mut self, c: char) {
         self.input.insert(self.cursor_position, c);
         self.cursor_position += 1;
+        self.history_index = None; // Reset selection when input changes
     }
 
-    /// Delete the character before the cursor (backspace)
+    /// Delete the character before the cursor (backspace).
+    /// Resets history selection since the filtered list may change.
     fn delete_char(&mut self) {
         if self.cursor_position > 0 {
             self.cursor_position -= 1;
             self.input.remove(self.cursor_position);
+            self.history_index = None; // Reset selection when input changes
         }
     }
 
-    /// Delete the character at the cursor (delete key)
+    /// Delete the character at the cursor (delete key).
+    /// Resets history selection since the filtered list may change.
     fn delete_char_forward(&mut self) {
         if self.cursor_position < self.input.len() {
             self.input.remove(self.cursor_position);
+            self.history_index = None; // Reset selection when input changes
         }
     }
 

@@ -10,6 +10,40 @@
 
 ---
 
+## 2026-02-01 - US-008 & US-009 (Input History)
+- Verified US-008 was already implemented by US-007
+- Implemented US-009: Reset selection when typing changes filtered list
+- Files changed: src/main.rs
+- **What was implemented:**
+  - US-008 was already satisfied: `render_ui()` checks `filtered.is_empty()` and hides dropdown when no matches
+  - Modified `insert_char()` to reset `history_index` to None when user types
+  - Modified `delete_char()` to reset `history_index` to None on backspace
+  - Modified `delete_char_forward()` to reset `history_index` to None on delete key
+  - This ensures selection resets whenever the filtered list might change
+- **Learnings for future iterations:**
+  - When implementing filtering with selection, remember to reset selection when filter criteria change
+  - US-008 was implicitly implemented by the filtered_history() + conditional rendering approach in US-007
+---
+
+## 2026-02-01 - US-007 (Input History)
+- Implemented filtered history while typing
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Created `filtered_history()` method on App struct returning Vec<(usize, &String)>
+  - Method returns all history when input is empty, or filters to entries containing input (case-sensitive)
+  - Tuple contains (original_index, entry) to preserve selection mapping across filters
+  - Updated `should_show_history_dropdown()` to use filtered history (shows when matches exist)
+  - Updated `render_history_dropdown()` to accept filtered history and display filtered items
+  - Updated `render_ui()` to calculate dropdown height based on filtered history length
+  - Updated `select_history_previous()` and `select_history_next()` to navigate over filtered list
+  - Navigation finds current position in filtered list, then moves within filtered bounds
+  - Help text changed from "Type to dismiss" to "Type to filter"
+- **Learnings for future iterations:**
+  - When filtering a list with selection, store original indices alongside filtered items
+  - Use `iter().position()` to find where the current selection is in the filtered list
+  - The filtered_history returns tuples so navigation can map between display and original indices
+---
+
 ## 2026-02-01 - US-006 (Input History)
 - Implemented keyboard navigation for history selection
 - Files changed: src/main.rs
