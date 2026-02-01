@@ -370,11 +370,13 @@ impl App {
     }
 
     /// Delete the currently selected history entry.
+    /// Clears the selection after deletion (sets `history_index` to None).
     /// Returns true if an entry was deleted, false otherwise.
     fn delete_history_entry(&mut self) -> bool {
         if let Some(idx) = self.history_index {
             if idx < self.history.len() {
                 self.history.remove(idx);
+                self.history_index = None; // Clear selection after deletion
                 return true;
             }
         }
