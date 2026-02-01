@@ -1,0 +1,25 @@
+## Codebase Patterns
+- Use `color_eyre::Result` for error handling throughout
+- The app uses async/await with tokio runtime
+- CLI uses clap with derive macros for parsing
+- Ollama is used for LLM generation with streaming support
+- For ratatui Layout constraints, pass arrays directly (not `.as_ref()`) due to palette feature conflicts
+
+---
+
+## 2026-02-01 - US-001
+- Implemented basic TUI scaffold with ratatui and crossterm
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Added ratatui and crossterm imports (dependencies already existed in Cargo.toml)
+  - Created `setup_terminal()` function for alternate screen and raw mode
+  - Created `restore_terminal()` function for clean teardown
+  - Implemented `run_tui()` with proper setup/teardown pattern
+  - Implemented `run_tui_loop()` with basic UI and event handling
+  - App exits cleanly on 'q' key or Ctrl+C
+  - Added `Tui` subcommand (now default) alongside existing `Run` command
+- **Learnings for future iterations:**
+  - When using ratatui with the palette feature, avoid `.as_ref()` on constraint arrays due to type inference conflicts
+  - Always restore terminal state even on errors using a pattern like `let result = ...; restore()?; result`
+  - The existing `run()` function handles the original CLI streaming mode
+---
