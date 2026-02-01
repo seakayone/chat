@@ -615,6 +615,8 @@ enum KeyAction {
     SelectCommand(String),
     /// Spawn an LLM task with the given query
     SpawnLlmTask(String),
+    /// Save history to file (e.g., after deletion)
+    SaveHistory,
 }
 
 /// Handle a key event in the TUI
@@ -687,7 +689,9 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> KeyAction {
                 && should_show_history_dropdown(app)
                 && app.history_index.is_some() =>
         {
-            app.delete_history_entry();
+            if app.delete_history_entry() {
+                return KeyAction::SaveHistory;
+            }
         }
         KeyCode::Char(c) if app.is_input_enabled() => app.insert_char(c),
         _ => {}
@@ -758,6 +762,13 @@ async fn run_tui_loop(
                         llm_task = Some(tokio::spawn(async move {
                             generate_command_options(&query).await
                         }));
+                    }
+                    KeyAction::SaveHistory => {
+                        // Save history asynchronously (e.g., after deletion)
+                        let history_clone = app.history.clone();
+                        tokio::spawn(async move {
+                            save_history(&history_clone).await;
+                        });
                     }
                 }
             }
