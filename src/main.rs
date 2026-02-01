@@ -371,18 +371,19 @@ impl App {
 
     /// Get the filtered history entries based on current input.
     /// If input is empty, returns all history entries.
-    /// Otherwise, filters to entries containing the input text (case-sensitive substring match).
+    /// Otherwise, filters to entries containing the input text (case-insensitive substring match).
     /// Returns tuples of (`original_index`, entry) to preserve index for selection.
     fn filtered_history(&self) -> Vec<(usize, &String)> {
         if self.input.is_empty() {
             // Return all history entries with their original indices
             self.history.iter().enumerate().collect()
         } else {
-            // Filter to entries containing the input text (case-sensitive)
+            // Filter to entries containing the input text (case-insensitive)
+            let input_lower = self.input.to_lowercase();
             self.history
                 .iter()
                 .enumerate()
-                .filter(|(_, entry)| entry.contains(&self.input))
+                .filter(|(_, entry)| entry.to_lowercase().contains(&input_lower))
                 .collect()
         }
     }

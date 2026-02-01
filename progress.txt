@@ -10,6 +10,18 @@
 
 ---
 
+## 2026-02-01 - US-007 (Input History) - Case-insensitive fix
+- Fixed case-insensitive filtering that was missed in original implementation
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Modified `filtered_history()` to use case-insensitive substring matching
+  - Converts both input and history entries to lowercase before comparing
+  - Changed from `entry.contains(&self.input)` to `entry.to_lowercase().contains(&input_lower)`
+- **Learnings for future iterations:**
+  - Always read acceptance criteria carefully - "case-insensitive" was explicitly required
+  - The `to_lowercase()` method on strings is the idiomatic Rust way to do case-insensitive comparisons
+---
+
 ## 2026-02-01 - US-008 & US-009 (Input History)
 - Verified US-008 was already implemented by US-007
 - Implemented US-009: Reset selection when typing changes filtered list
