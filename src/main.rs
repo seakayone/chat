@@ -199,6 +199,19 @@ impl App {
             None
         }
     }
+
+    /// Regenerate options by re-querying the LLM with the same input
+    /// Returns true if regeneration was started, false otherwise
+    fn regenerate(&mut self) -> bool {
+        if self.state == AppState::SelectingCommand && !self.input.trim().is_empty() {
+            self.state = AppState::Loading;
+            self.loading_tick = 0;
+            self.generated_options.clear();
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// Parse command options from LLM response
@@ -454,6 +467,16 @@ async fn run_tui_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> 
                                 break;
                             }
                         }
+                        KeyCode::Char('r') if app.state == AppState::SelectingCommand => {
+                            // Regenerate options with the same query
+                            if app.regenerate() {
+                                // Spawn new async LLM task
+                                let query = app.input.clone();
+                                llm_task = Some(tokio::spawn(async move {
+                                    generate_command_options(&query).await
+                                }));
+                            }
+                        }
                         KeyCode::Backspace if app.is_input_enabled() => app.delete_char(),
                         KeyCode::Delete if app.is_input_enabled() => app.delete_char_forward(),
                         KeyCode::Left if app.is_input_enabled() => app.move_cursor_left(),
@@ -556,10 +579,14 @@ fn render_loading(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::
 
 /// Render the command options list and explanation pane
 fn render_command_list(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
-    // Split the area into two parts: command list (top) and explanation pane (bottom)
+    // Split the area into three parts: command list (top), hint line, and explanation pane (bottom)
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(5), Constraint::Min(3)])
+        .constraints([
+            Constraint::Length(5),
+            Constraint::Length(1),
+            Constraint::Min(3),
+        ])
         .split(area);
 
     // Render command list
@@ -604,8 +631,21 @@ fn render_command_list(app: &App, frame: &mut ratatui::Frame, area: ratatui::lay
         frame.render_widget(list, chunks[0]);
     }
 
+    // Render hint line with regenerate option
+    let hint = Paragraph::new(Line::from(vec![
+        Span::styled("↑/↓", Style::default().fg(Color::Yellow)),
+        Span::raw(" Navigate  "),
+        Span::styled("Enter", Style::default().fg(Color::Yellow)),
+        Span::raw(" Select  "),
+        Span::styled("r", Style::default().fg(Color::Yellow)),
+        Span::raw(" Regenerate  "),
+        Span::styled("Esc", Style::default().fg(Color::Yellow)),
+        Span::raw(" Cancel"),
+    ]));
+    frame.render_widget(hint, chunks[1]);
+
     // Render explanation pane
-    render_explanation(app, frame, chunks[1]);
+    render_explanation(app, frame, chunks[2]);
 }
 
 /// Render the explanation pane for the currently selected command
