@@ -301,28 +301,47 @@ impl App {
         self.history.truncate(10);
     }
 
-    /// Move history selection up (selects last if none selected, wraps around)
+    /// Move history selection up (selects last if none selected, wraps around).
+    /// Uses filtered history for navigation to ensure selection stays within visible items.
     fn select_history_previous(&mut self) {
-        if self.history.is_empty() {
+        let filtered = self.filtered_history();
+        if filtered.is_empty() {
             return;
         }
-        self.history_index = Some(match self.history_index {
+        // Find current position in filtered list
+        let current_pos = self
+            .history_index
+            .and_then(|idx| filtered.iter().position(|(orig_idx, _)| *orig_idx == idx));
+
+        let new_pos = match current_pos {
             // No selection or at first, go to last (wrap around)
-            None | Some(0) => self.history.len() - 1,
-            Some(i) => i - 1,
-        });
+            None | Some(0) => filtered.len() - 1,
+            Some(pos) => pos - 1,
+        };
+
+        // Set history_index to the original index of the selected filtered item
+        self.history_index = Some(filtered[new_pos].0);
     }
 
-    /// Move history selection down (selects first if none selected, wraps around)
+    /// Move history selection down (selects first if none selected, wraps around).
+    /// Uses filtered history for navigation to ensure selection stays within visible items.
     fn select_history_next(&mut self) {
-        if self.history.is_empty() {
+        let filtered = self.filtered_history();
+        if filtered.is_empty() {
             return;
         }
-        self.history_index = Some(match self.history_index {
+        // Find current position in filtered list
+        let current_pos = self
+            .history_index
+            .and_then(|idx| filtered.iter().position(|(orig_idx, _)| *orig_idx == idx));
+
+        let new_pos = match current_pos {
             None => 0, // No selection, go to first
-            Some(i) if i >= self.history.len() - 1 => 0, // At last, wrap to first
-            Some(i) => i + 1,
-        });
+            Some(pos) => (pos + 1) % filtered.len(), // Wrap around
+        };
+
+        // Set history_index to the original index of the selected filtered item
+        self.history_index = Some(filtered[new_pos].0);
     }
 
     /// Select the history entry at current index, populate input, and close dropdown
@@ -342,6 +361,24 @@ impl App {
     /// Reset history selection (close dropdown without selecting)
     fn reset_history_selection(&mut self) {
         self.history_index = None;
+    }
+
+    /// Get the filtered history entries based on current input.
+    /// If input is empty, returns all history entries.
+    /// Otherwise, filters to entries containing the input text (case-sensitive substring match).
+    /// Returns tuples of (`original_index`, entry) to preserve index for selection.
+    fn filtered_history(&self) -> Vec<(usize, &String)> {
+        if self.input.is_empty() {
+            // Return all history entries with their original indices
+            self.history.iter().enumerate().collect()
+        } else {
+            // Filter to entries containing the input text (case-sensitive)
+            self.history
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| entry.contains(&self.input))
+                .collect()
+        }
     }
 }
 
@@ -503,29 +540,8 @@ fn render_ui(app: &App, frame: &mut ratatui::Frame) {
     match app.state {
         AppState::Input => {
             // Check if we should show the history dropdown
-            if should_show_history_dropdown(app) {
-                // Split the area: history dropdown (dynamic height) and help text below
-                // History is capped at 10, so this cast is safe
-                #[allow(clippy::cast_possible_truncation)]
-                let history_height = (app.history.len() as u16).min(10) + 2; // +2 for borders
-                let sub_chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(history_height), Constraint::Min(1)])
-                    .split(chunks[1]);
-
-                render_history_dropdown(app, frame, sub_chunks[0]);
-
-                // Render help text below
-                let help_text =
-                    "↑/↓ Navigate history  Enter Select  Type to dismiss. Esc to quit.";
-                let status_block = Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::DarkGray));
-                let status = Paragraph::new(help_text)
-                    .block(status_block)
-                    .style(Style::default().fg(Color::Gray));
-                frame.render_widget(status, sub_chunks[1]);
-            } else {
+            let filtered = app.filtered_history();
+            if filtered.is_empty() {
                 let help_text =
                     "Type your problem and press Enter to submit. Press Esc or Ctrl+C to quit.";
                 let status_block = Block::default()
@@ -535,6 +551,28 @@ fn render_ui(app: &App, frame: &mut ratatui::Frame) {
                     .block(status_block)
                     .style(Style::default().fg(Color::Gray));
                 frame.render_widget(status, chunks[1]);
+            } else {
+                // Split the area: history dropdown (dynamic height) and help text below
+                // Filtered history is capped at 10, so this cast is safe
+                #[allow(clippy::cast_possible_truncation)]
+                let history_height = (filtered.len() as u16).min(10) + 2; // +2 for borders
+                let sub_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(history_height), Constraint::Min(1)])
+                    .split(chunks[1]);
+
+                render_history_dropdown(app, &filtered, frame, sub_chunks[0]);
+
+                // Render help text below
+                let help_text =
+                    "↑/↓ Navigate history  Enter Select  Type to filter. Esc to quit.";
+                let status_block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::DarkGray));
+                let status = Paragraph::new(help_text)
+                    .block(status_block)
+                    .style(Style::default().fg(Color::Gray));
+                frame.render_widget(status, sub_chunks[1]);
             }
         }
         AppState::Loading => {
@@ -855,33 +893,43 @@ fn render_command_list(app: &App, frame: &mut ratatui::Frame, area: ratatui::lay
 }
 
 /// Check if the history dropdown should be visible.
-/// Dropdown is shown when: in Input state, history is non-empty, and input is empty.
+/// Dropdown is shown when: in Input state and there are matching history entries.
 fn should_show_history_dropdown(app: &App) -> bool {
-    app.state == AppState::Input && !app.history.is_empty() && app.input.is_empty()
+    app.state == AppState::Input && !app.filtered_history().is_empty()
 }
 
 /// Render the history dropdown below the input box.
-/// Shows up to 10 entries, most recent first. Highlights selected entry if any.
-fn render_history_dropdown(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+/// Shows filtered history entries, most recent first. Highlights selected entry if any.
+fn render_history_dropdown(
+    app: &App,
+    filtered: &[(usize, &String)],
+    frame: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+) {
     let history_block = Block::default()
         .title(" History ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::DarkGray));
 
-    // Build list items from history (already most recent first, capped at 10)
-    let items: Vec<ListItem> = app
-        .history
+    // Build list items from filtered history
+    // The tuple contains (original_index, entry) to preserve selection mapping
+    let items: Vec<ListItem> = filtered
         .iter()
         .enumerate()
-        .map(|(i, entry)| {
-            let is_selected = app.history_index == Some(i);
+        .map(|(display_idx, (original_idx, entry))| {
+            // Selection is based on original index
+            let is_selected = app.history_index == Some(*original_idx);
 
             // Truncate if too long for display width (account for borders and number prefix)
             let max_width = area.width.saturating_sub(6) as usize; // 2 borders + "N. " prefix
             let display_text = if entry.len() > max_width {
-                format!("{}. {}…", i + 1, &entry[..max_width.saturating_sub(1)])
+                format!(
+                    "{}. {}…",
+                    display_idx + 1,
+                    &entry[..max_width.saturating_sub(1)]
+                )
             } else {
-                format!("{}. {}", i + 1, entry)
+                format!("{}. {}", display_idx + 1, entry)
             };
 
             // Highlight selected entry with cyan background and bold text
