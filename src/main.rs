@@ -476,15 +476,40 @@ fn render_ui(app: &App, frame: &mut ratatui::Frame) {
     // Render status/content area based on state
     match app.state {
         AppState::Input => {
-            let help_text =
-                "Type your problem and press Enter to submit. Press Esc or Ctrl+C to quit.";
-            let status_block = Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray));
-            let status = Paragraph::new(help_text)
-                .block(status_block)
-                .style(Style::default().fg(Color::Gray));
-            frame.render_widget(status, chunks[1]);
+            // Check if we should show the history dropdown
+            if should_show_history_dropdown(app) {
+                // Split the area: history dropdown (dynamic height) and help text below
+                // History is capped at 10, so this cast is safe
+                #[allow(clippy::cast_possible_truncation)]
+                let history_height = (app.history.len() as u16).min(10) + 2; // +2 for borders
+                let sub_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(history_height), Constraint::Min(1)])
+                    .split(chunks[1]);
+
+                render_history_dropdown(app, frame, sub_chunks[0]);
+
+                // Render help text below
+                let help_text =
+                    "↑/↓ Navigate history  Enter Select  Type to dismiss. Esc to quit.";
+                let status_block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::DarkGray));
+                let status = Paragraph::new(help_text)
+                    .block(status_block)
+                    .style(Style::default().fg(Color::Gray));
+                frame.render_widget(status, sub_chunks[1]);
+            } else {
+                let help_text =
+                    "Type your problem and press Enter to submit. Press Esc or Ctrl+C to quit.";
+                let status_block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::DarkGray));
+                let status = Paragraph::new(help_text)
+                    .block(status_block)
+                    .style(Style::default().fg(Color::Gray));
+                frame.render_widget(status, chunks[1]);
+            }
         }
         AppState::Loading => {
             render_loading(app, frame, chunks[1]);
@@ -768,6 +793,45 @@ fn render_command_list(app: &App, frame: &mut ratatui::Frame, area: ratatui::lay
 
     // Render explanation pane
     render_explanation(app, frame, chunks[2]);
+}
+
+/// Check if the history dropdown should be visible.
+/// Dropdown is shown when: in Input state, history is non-empty, and input is empty.
+fn should_show_history_dropdown(app: &App) -> bool {
+    app.state == AppState::Input && !app.history.is_empty() && app.input.is_empty()
+}
+
+/// Render the history dropdown below the input box.
+/// Shows up to 10 entries, most recent first.
+fn render_history_dropdown(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+    let history_block = Block::default()
+        .title(" History ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    // Build list items from history (already most recent first, capped at 10)
+    let items: Vec<ListItem> = app
+        .history
+        .iter()
+        .enumerate()
+        .map(|(i, entry)| {
+            // Truncate if too long for display width (account for borders and number prefix)
+            let max_width = area.width.saturating_sub(6) as usize; // 2 borders + "N. " prefix
+            let display_text = if entry.len() > max_width {
+                format!("{}. {}…", i + 1, &entry[..max_width.saturating_sub(1)])
+            } else {
+                format!("{}. {}", i + 1, entry)
+            };
+
+            ListItem::new(Line::from(Span::styled(
+                display_text,
+                Style::default().fg(Color::Gray),
+            )))
+        })
+        .collect();
+
+    let list = List::new(items).block(history_block);
+    frame.render_widget(list, area);
 }
 
 /// Render the explanation pane for the currently selected command
