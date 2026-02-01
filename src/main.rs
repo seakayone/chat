@@ -20,6 +20,19 @@ use std::io;
 use tokio::io::{stdout, AsyncWriteExt};
 use tokio_stream::StreamExt;
 
+/// Current mode/state of the application
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+enum AppState {
+    /// User is typing their query
+    #[default]
+    Input,
+    /// Waiting for LLM response
+    Loading,
+    /// Commands have been generated and are ready for selection (used in US-005)
+    #[allow(dead_code)]
+    SelectingCommand,
+}
+
 /// Application state for the TUI
 #[derive(Default)]
 struct App {
@@ -27,8 +40,10 @@ struct App {
     input: String,
     /// Current cursor position in the input
     cursor_position: usize,
-    /// Whether a query has been submitted
-    query_submitted: bool,
+    /// Current application state
+    state: AppState,
+    /// Counter for loading animation (used for spinner)
+    loading_tick: usize,
 }
 
 impl App {
@@ -77,10 +92,37 @@ impl App {
         self.cursor_position = self.input.len();
     }
 
-    /// Submit the current query
+    /// Submit the current query and start loading
     fn submit_query(&mut self) {
-        if !self.input.trim().is_empty() {
-            self.query_submitted = true;
+        if !self.input.trim().is_empty() && self.state == AppState::Input {
+            self.state = AppState::Loading;
+            self.loading_tick = 0;
+        }
+    }
+
+    /// Increment the loading animation tick
+    fn tick_loading(&mut self) {
+        if self.state == AppState::Loading {
+            self.loading_tick = self.loading_tick.wrapping_add(1);
+        }
+    }
+
+    /// Get the current spinner character for the loading animation
+    fn spinner_char(&self) -> char {
+        const SPINNER_CHARS: [char; 4] = ['⠋', '⠙', '⠸', '⠴'];
+        SPINNER_CHARS[(self.loading_tick / 2) % SPINNER_CHARS.len()]
+    }
+
+    /// Check if input is currently enabled
+    fn is_input_enabled(&self) -> bool {
+        self.state == AppState::Input
+    }
+
+    /// Transition from loading to command selection (used when LLM response arrives)
+    #[allow(dead_code)]
+    fn complete_loading(&mut self) {
+        if self.state == AppState::Loading {
+            self.state = AppState::SelectingCommand;
         }
     }
 }
@@ -160,43 +202,65 @@ fn run_tui_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result
             // Render input box
             render_input(&app, frame, chunks[0]);
 
-            // Render status/help area
-            let status_text = if app.query_submitted {
-                format!("Query submitted: {}", app.input)
-            } else {
-                "Type your problem and press Enter to submit. Press Esc or Ctrl+C to quit.".to_string()
-            };
-
-            let status_block = Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray));
-
-            let status = Paragraph::new(status_text)
-                .block(status_block)
-                .style(Style::default().fg(Color::Gray));
-
-            frame.render_widget(status, chunks[1]);
+            // Render status/content area based on state
+            match app.state {
+                AppState::Input => {
+                    let help_text =
+                        "Type your problem and press Enter to submit. Press Esc or Ctrl+C to quit.";
+                    let status_block = Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::DarkGray));
+                    let status = Paragraph::new(help_text)
+                        .block(status_block)
+                        .style(Style::default().fg(Color::Gray));
+                    frame.render_widget(status, chunks[1]);
+                }
+                AppState::Loading => {
+                    render_loading(&app, frame, chunks[1]);
+                }
+                AppState::SelectingCommand => {
+                    // Placeholder for command selection UI (will be implemented in US-005)
+                    let placeholder_block = Block::default()
+                        .title(" Commands ")
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Green));
+                    let placeholder = Paragraph::new("Commands will appear here...")
+                        .block(placeholder_block)
+                        .style(Style::default().fg(Color::Gray));
+                    frame.render_widget(placeholder, chunks[1]);
+                }
+            }
         })?;
+
+        // Tick loading animation
+        app.tick_loading();
 
         // Handle input events
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
-                        KeyCode::Esc => break,
+                        KeyCode::Esc => {
+                            // In input state, Esc exits; otherwise, Esc returns to input
+                            if app.state == AppState::Input {
+                                break;
+                            }
+                            app.state = AppState::Input;
+                        }
                         KeyCode::Char('c')
                             if key.modifiers.contains(event::KeyModifiers::CONTROL) =>
                         {
                             break;
                         }
-                        KeyCode::Enter => app.submit_query(),
-                        KeyCode::Backspace => app.delete_char(),
-                        KeyCode::Delete => app.delete_char_forward(),
-                        KeyCode::Left => app.move_cursor_left(),
-                        KeyCode::Right => app.move_cursor_right(),
-                        KeyCode::Home => app.move_cursor_home(),
-                        KeyCode::End => app.move_cursor_end(),
-                        KeyCode::Char(c) => app.insert_char(c),
+                        // Input handling - only when input is enabled
+                        KeyCode::Enter if app.is_input_enabled() => app.submit_query(),
+                        KeyCode::Backspace if app.is_input_enabled() => app.delete_char(),
+                        KeyCode::Delete if app.is_input_enabled() => app.delete_char_forward(),
+                        KeyCode::Left if app.is_input_enabled() => app.move_cursor_left(),
+                        KeyCode::Right if app.is_input_enabled() => app.move_cursor_right(),
+                        KeyCode::Home if app.is_input_enabled() => app.move_cursor_home(),
+                        KeyCode::End if app.is_input_enabled() => app.move_cursor_end(),
+                        KeyCode::Char(c) if app.is_input_enabled() => app.insert_char(c),
                         _ => {}
                     }
                 }
@@ -209,47 +273,85 @@ fn run_tui_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result
 
 /// Render the text input widget
 fn render_input(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+    let is_enabled = app.is_input_enabled();
+
+    // Use different border color when disabled
+    let border_color = if is_enabled {
+        Color::Cyan
+    } else {
+        Color::DarkGray
+    };
+
     let input_block = Block::default()
         .title(" Describe your problem: ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(border_color));
 
-    // Build the input text with cursor
-    let input_text = if app.cursor_position < app.input.len() {
-        // Cursor in middle of text
-        let before = &app.input[..app.cursor_position];
-        let cursor_char = &app.input[app.cursor_position..=app.cursor_position];
-        let after = &app.input[app.cursor_position + 1..];
+    // Build the input text with cursor (only show cursor when enabled)
+    let input_text = if is_enabled {
+        if app.cursor_position < app.input.len() {
+            // Cursor in middle of text
+            let before = &app.input[..app.cursor_position];
+            let cursor_char = &app.input[app.cursor_position..=app.cursor_position];
+            let after = &app.input[app.cursor_position + 1..];
 
-        Line::from(vec![
-            Span::raw(before),
-            Span::styled(
-                cursor_char,
-                Style::default()
-                    .bg(Color::White)
-                    .fg(Color::Black)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(after),
-        ])
+            Line::from(vec![
+                Span::raw(before),
+                Span::styled(
+                    cursor_char,
+                    Style::default()
+                        .bg(Color::White)
+                        .fg(Color::Black)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(after),
+            ])
+        } else {
+            // Cursor at end of text (show block cursor)
+            Line::from(vec![
+                Span::raw(&app.input),
+                Span::styled(
+                    " ",
+                    Style::default()
+                        .bg(Color::White)
+                        .fg(Color::Black),
+                ),
+            ])
+        }
     } else {
-        // Cursor at end of text (show block cursor)
-        Line::from(vec![
-            Span::raw(&app.input),
-            Span::styled(
-                " ",
-                Style::default()
-                    .bg(Color::White)
-                    .fg(Color::Black),
-            ),
-        ])
+        // When disabled, just show the text without cursor
+        Line::from(app.input.as_str())
+    };
+
+    // Use dimmed color when disabled
+    let text_color = if is_enabled {
+        Color::White
+    } else {
+        Color::Gray
     };
 
     let input = Paragraph::new(input_text)
         .block(input_block)
-        .style(Style::default().fg(Color::White));
+        .style(Style::default().fg(text_color));
 
     frame.render_widget(input, area);
+}
+
+/// Render the loading indicator
+fn render_loading(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+    let loading_block = Block::default()
+        .title(" Status ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow));
+
+    let spinner = app.spinner_char();
+    let loading_text = format!("{spinner} Generating options...");
+
+    let loading = Paragraph::new(loading_text)
+        .block(loading_block)
+        .style(Style::default().fg(Color::Yellow));
+
+    frame.render_widget(loading, area);
 }
 
 async fn run() -> Result<()> {
