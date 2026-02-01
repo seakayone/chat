@@ -9,7 +9,9 @@
       "Bash(cargo build:*)",
       "Bash(RUSTFLAGS=\"-W unused\" cargo check:*)",
       "Bash(cargo tree:*)",
-      "WebFetch(domain:docs.ollama.com)"
+      "WebFetch(domain:docs.ollama.com)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
