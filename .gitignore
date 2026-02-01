@@ -77,3 +77,5 @@ tags
 tasks/*
 prd.json
 scripts/*
+
+.claude/settings.local.json
