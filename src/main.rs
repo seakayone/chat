@@ -62,7 +62,6 @@ async fn load_history() -> Vec<String> {
 /// Save history to the cache file.
 /// Each entry is written on its own line.
 /// Silently fails if the file cannot be written (e.g., permission errors).
-#[allow(dead_code)] // Used in US-004
 async fn save_history(history: &[String]) {
     let Some(path) = get_history_path() else {
         return;
@@ -139,7 +138,6 @@ struct App {
     /// Currently selected command index (0-based)
     selected_index: usize,
     /// History of previous queries (most recent first)
-    #[allow(dead_code)] // Used in US-004/US-005/US-006
     history: Vec<String>,
 }
 
@@ -280,6 +278,25 @@ impl App {
         } else {
             false
         }
+    }
+
+    /// Add a query to history.
+    /// - Duplicates are moved to the top (old entry removed)
+    /// - History is capped at 10 entries (oldest removed when exceeded)
+    fn add_to_history(&mut self, query: &str) {
+        let query = query.trim().to_string();
+        if query.is_empty() {
+            return;
+        }
+
+        // Remove duplicate if it exists
+        self.history.retain(|h| h != &query);
+
+        // Add to the front (most recent first)
+        self.history.insert(0, query);
+
+        // Cap at 10 entries
+        self.history.truncate(10);
     }
 }
 
@@ -543,10 +560,18 @@ async fn run_tui_loop(
                         // Input handling - only when input is enabled
                         KeyCode::Enter if app.is_input_enabled() => {
                             if app.submit_query() {
-                                // Spawn async LLM task
+                                // Add query to history and save
                                 let query = app.input.clone();
+                                app.add_to_history(&query);
+                                let history_clone = app.history.clone();
+                                tokio::spawn(async move {
+                                    save_history(&history_clone).await;
+                                });
+
+                                // Spawn async LLM task
+                                let query_for_llm = app.input.clone();
                                 llm_task = Some(tokio::spawn(async move {
-                                    generate_command_options(&query).await
+                                    generate_command_options(&query_for_llm).await
                                 }));
                             }
                         }
