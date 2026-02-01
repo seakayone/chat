@@ -17,8 +17,25 @@ use ratatui::{
     Terminal,
 };
 use std::io;
+use std::path::PathBuf;
 use tokio::io::{stdout, AsyncWriteExt};
 use tokio_stream::StreamExt;
+
+/// Get the platform-appropriate path for the history file.
+/// On macOS: ~/Library/Caches/chat/history
+/// On Linux: ~/.cache/chat/history
+/// Creates parent directories if they don't exist.
+fn get_history_path() -> Option<PathBuf> {
+    let cache_dir = dirs::cache_dir()?;
+    let history_dir = cache_dir.join("chat");
+
+    // Create parent directories if they don't exist
+    if !history_dir.exists() {
+        std::fs::create_dir_all(&history_dir).ok()?;
+    }
+
+    Some(history_dir.join("history"))
+}
 
 /// System prompt for generating multiple command options
 const MULTI_OPTION_PROMPT: &str = r"You are Chatty, a natural language to zsh shell command translation engine for MacOS.
