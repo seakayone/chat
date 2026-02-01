@@ -25,6 +25,7 @@ use tokio_stream::StreamExt;
 /// On macOS: ~/Library/Caches/chat/history
 /// On Linux: ~/.cache/chat/history
 /// Creates parent directories if they don't exist.
+#[allow(dead_code)] // Used by load_history and save_history
 fn get_history_path() -> Option<PathBuf> {
     let cache_dir = dirs::cache_dir()?;
     let history_dir = cache_dir.join("chat");
@@ -35,6 +36,42 @@ fn get_history_path() -> Option<PathBuf> {
     }
 
     Some(history_dir.join("history"))
+}
+
+/// Load history from the cache file.
+/// Returns an empty Vec if the file doesn't exist, is empty, or cannot be read.
+#[allow(dead_code)] // Used in US-003
+async fn load_history() -> Vec<String> {
+    let Some(path) = get_history_path() else {
+        return Vec::new();
+    };
+
+    // Read the file contents, returning empty Vec on any error
+    let Ok(contents) = tokio::fs::read_to_string(&path).await else {
+        return Vec::new();
+    };
+
+    // Parse lines, filtering out empty lines
+    contents
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+/// Save history to the cache file.
+/// Each entry is written on its own line.
+/// Silently fails if the file cannot be written (e.g., permission errors).
+#[allow(dead_code)] // Used in US-004
+async fn save_history(history: &[String]) {
+    let Some(path) = get_history_path() else {
+        return;
+    };
+
+    // Join entries with newlines and write to file
+    let contents = history.join("\n");
+    let _ = tokio::fs::write(&path, contents).await;
 }
 
 /// System prompt for generating multiple command options
