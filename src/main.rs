@@ -139,6 +139,8 @@ struct App {
     selected_index: usize,
     /// History of previous queries (most recent first)
     history: Vec<String>,
+    /// Currently selected history index when dropdown is visible (None = no selection)
+    history_index: Option<usize>,
 }
 
 impl App {
@@ -153,6 +155,7 @@ impl App {
             generated_options: Vec::new(),
             selected_index: 0,
             history,
+            history_index: None,
         }
     }
 
@@ -297,6 +300,49 @@ impl App {
 
         // Cap at 10 entries
         self.history.truncate(10);
+    }
+
+    /// Move history selection up (selects last if none selected, wraps around)
+    fn select_history_previous(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+        self.history_index = Some(match self.history_index {
+            // No selection or at first, go to last (wrap around)
+            None | Some(0) => self.history.len() - 1,
+            Some(i) => i - 1,
+        });
+    }
+
+    /// Move history selection down (selects first if none selected, wraps around)
+    fn select_history_next(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+        self.history_index = Some(match self.history_index {
+            None => 0, // No selection, go to first
+            Some(i) if i >= self.history.len() - 1 => 0, // At last, wrap to first
+            Some(i) => i + 1,
+        });
+    }
+
+    /// Select the history entry at current index, populate input, and close dropdown
+    /// Returns true if selection was made, false otherwise
+    fn confirm_history_selection(&mut self) -> bool {
+        if let Some(idx) = self.history_index {
+            if let Some(entry) = self.history.get(idx).cloned() {
+                self.input = entry;
+                self.cursor_position = self.input.len();
+                self.history_index = None; // Close dropdown
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Reset history selection (close dropdown without selecting)
+    fn reset_history_selection(&mut self) {
+        self.history_index = None;
     }
 }
 
@@ -520,6 +566,88 @@ fn render_ui(app: &App, frame: &mut ratatui::Frame) {
     }
 }
 
+/// Result of handling a key event in the TUI
+enum KeyAction {
+    /// No special action, continue the loop
+    Continue,
+    /// Exit the TUI loop
+    Exit,
+    /// Exit with a selected command
+    SelectCommand(String),
+    /// Spawn an LLM task with the given query
+    SpawnLlmTask(String),
+}
+
+/// Handle a key event in the TUI
+/// Returns the action to take based on the key pressed
+fn handle_key_event(app: &mut App, key: event::KeyEvent) -> KeyAction {
+    if key.kind != KeyEventKind::Press {
+        return KeyAction::Continue;
+    }
+
+    match key.code {
+        KeyCode::Esc => {
+            // In input state with history dropdown open, close dropdown first
+            if app.state == AppState::Input && app.history_index.is_some() {
+                app.reset_history_selection();
+            } else if app.state == AppState::Input {
+                return KeyAction::Exit;
+            } else {
+                app.state = AppState::Input;
+                return KeyAction::Continue; // Signal to abort LLM task if running
+            }
+        }
+        KeyCode::Char('c') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+            return KeyAction::Exit;
+        }
+        // History dropdown navigation - only when dropdown is visible
+        KeyCode::Up if should_show_history_dropdown(app) => {
+            app.select_history_previous();
+        }
+        KeyCode::Down if should_show_history_dropdown(app) => {
+            app.select_history_next();
+        }
+        // History selection confirmation - when a history entry is selected
+        KeyCode::Enter if app.is_input_enabled() && app.history_index.is_some() => {
+            app.confirm_history_selection();
+        }
+        // Input handling - submit query
+        KeyCode::Enter if app.is_input_enabled() => {
+            if app.submit_query() {
+                let query = app.input.clone();
+                app.add_to_history(&query);
+                return KeyAction::SpawnLlmTask(query);
+            }
+        }
+        // Command selection navigation
+        KeyCode::Up if app.state == AppState::SelectingCommand => {
+            app.select_previous();
+        }
+        KeyCode::Down if app.state == AppState::SelectingCommand => {
+            app.select_next();
+        }
+        KeyCode::Enter if app.state == AppState::SelectingCommand => {
+            if let Some(selected) = app.confirm_selection() {
+                return KeyAction::SelectCommand(selected.command.clone());
+            }
+        }
+        KeyCode::Char('r') if app.state == AppState::SelectingCommand => {
+            if app.regenerate() {
+                return KeyAction::SpawnLlmTask(app.input.clone());
+            }
+        }
+        KeyCode::Backspace if app.is_input_enabled() => app.delete_char(),
+        KeyCode::Delete if app.is_input_enabled() => app.delete_char_forward(),
+        KeyCode::Left if app.is_input_enabled() => app.move_cursor_left(),
+        KeyCode::Right if app.is_input_enabled() => app.move_cursor_right(),
+        KeyCode::Home if app.is_input_enabled() => app.move_cursor_home(),
+        KeyCode::End if app.is_input_enabled() => app.move_cursor_end(),
+        KeyCode::Char(c) if app.is_input_enabled() => app.insert_char(c),
+        _ => {}
+    }
+    KeyAction::Continue
+}
+
 /// Main TUI event loop
 /// Returns the selected command if one was chosen, None if user cancelled
 async fn run_tui_loop(
@@ -560,78 +688,29 @@ async fn run_tui_loop(
         // Handle input events
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Esc => {
-                            // In input state, Esc exits; otherwise, Esc returns to input
-                            if app.state == AppState::Input {
-                                break;
-                            }
-                            // Cancel any running LLM task
-                            if let Some(task) = llm_task.take() {
-                                task.abort();
-                            }
-                            app.state = AppState::Input;
+                match handle_key_event(&mut app, key) {
+                    KeyAction::Continue => {}
+                    KeyAction::Exit => {
+                        // Cancel any running LLM task
+                        if let Some(task) = llm_task.take() {
+                            task.abort();
                         }
-                        KeyCode::Char('c')
-                            if key.modifiers.contains(event::KeyModifiers::CONTROL) =>
-                        {
-                            // Cancel any running LLM task
-                            if let Some(task) = llm_task.take() {
-                                task.abort();
-                            }
-                            break;
-                        }
-                        // Input handling - only when input is enabled
-                        KeyCode::Enter if app.is_input_enabled() => {
-                            if app.submit_query() {
-                                // Add query to history and save
-                                let query = app.input.clone();
-                                app.add_to_history(&query);
-                                let history_clone = app.history.clone();
-                                tokio::spawn(async move {
-                                    save_history(&history_clone).await;
-                                });
-
-                                // Spawn async LLM task
-                                let query_for_llm = app.input.clone();
-                                llm_task = Some(tokio::spawn(async move {
-                                    generate_command_options(&query_for_llm).await
-                                }));
-                            }
-                        }
-                        // Command selection navigation
-                        KeyCode::Up if app.state == AppState::SelectingCommand => {
-                            app.select_previous();
-                        }
-                        KeyCode::Down if app.state == AppState::SelectingCommand => {
-                            app.select_next();
-                        }
-                        KeyCode::Enter if app.state == AppState::SelectingCommand => {
-                            // Confirm selection and return the command
-                            if let Some(selected) = app.confirm_selection() {
-                                selected_command = Some(selected.command.clone());
-                                break;
-                            }
-                        }
-                        KeyCode::Char('r') if app.state == AppState::SelectingCommand => {
-                            // Regenerate options with the same query
-                            if app.regenerate() {
-                                // Spawn new async LLM task
-                                let query = app.input.clone();
-                                llm_task = Some(tokio::spawn(async move {
-                                    generate_command_options(&query).await
-                                }));
-                            }
-                        }
-                        KeyCode::Backspace if app.is_input_enabled() => app.delete_char(),
-                        KeyCode::Delete if app.is_input_enabled() => app.delete_char_forward(),
-                        KeyCode::Left if app.is_input_enabled() => app.move_cursor_left(),
-                        KeyCode::Right if app.is_input_enabled() => app.move_cursor_right(),
-                        KeyCode::Home if app.is_input_enabled() => app.move_cursor_home(),
-                        KeyCode::End if app.is_input_enabled() => app.move_cursor_end(),
-                        KeyCode::Char(c) if app.is_input_enabled() => app.insert_char(c),
-                        _ => {}
+                        break;
+                    }
+                    KeyAction::SelectCommand(cmd) => {
+                        selected_command = Some(cmd);
+                        break;
+                    }
+                    KeyAction::SpawnLlmTask(query) => {
+                        // Save history asynchronously
+                        let history_clone = app.history.clone();
+                        tokio::spawn(async move {
+                            save_history(&history_clone).await;
+                        });
+                        // Spawn LLM task
+                        llm_task = Some(tokio::spawn(async move {
+                            generate_command_options(&query).await
+                        }));
                     }
                 }
             }
@@ -802,7 +881,7 @@ fn should_show_history_dropdown(app: &App) -> bool {
 }
 
 /// Render the history dropdown below the input box.
-/// Shows up to 10 entries, most recent first.
+/// Shows up to 10 entries, most recent first. Highlights selected entry if any.
 fn render_history_dropdown(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
     let history_block = Block::default()
         .title(" History ")
@@ -815,6 +894,8 @@ fn render_history_dropdown(app: &App, frame: &mut ratatui::Frame, area: ratatui:
         .iter()
         .enumerate()
         .map(|(i, entry)| {
+            let is_selected = app.history_index == Some(i);
+
             // Truncate if too long for display width (account for borders and number prefix)
             let max_width = area.width.saturating_sub(6) as usize; // 2 borders + "N. " prefix
             let display_text = if entry.len() > max_width {
@@ -823,10 +904,17 @@ fn render_history_dropdown(app: &App, frame: &mut ratatui::Frame, area: ratatui:
                 format!("{}. {}", i + 1, entry)
             };
 
-            ListItem::new(Line::from(Span::styled(
-                display_text,
-                Style::default().fg(Color::Gray),
-            )))
+            // Highlight selected entry with cyan background and bold text
+            let style = if is_selected {
+                Style::default()
+                    .bg(Color::Cyan)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+
+            ListItem::new(Line::from(Span::styled(display_text, style)))
         })
         .collect();
 
