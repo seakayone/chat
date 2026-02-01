@@ -508,8 +508,15 @@ fn render_loading(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::
     frame.render_widget(loading, area);
 }
 
-/// Render the command options list
+/// Render the command options list and explanation pane
 fn render_command_list(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+    // Split the area into two parts: command list (top) and explanation pane (bottom)
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(5), Constraint::Min(3)])
+        .split(area);
+
+    // Render command list
     let commands_block = Block::default()
         .title(" Commands ")
         .borders(Borders::ALL)
@@ -545,11 +552,38 @@ fn render_command_list(app: &App, frame: &mut ratatui::Frame, area: ratatui::lay
         let no_options = Paragraph::new("No commands generated. Press Esc to try again.")
             .block(commands_block)
             .style(Style::default().fg(Color::Gray));
-        frame.render_widget(no_options, area);
+        frame.render_widget(no_options, chunks[0]);
     } else {
         let list = List::new(items).block(commands_block);
-        frame.render_widget(list, area);
+        frame.render_widget(list, chunks[0]);
     }
+
+    // Render explanation pane
+    render_explanation(app, frame, chunks[1]);
+}
+
+/// Render the explanation pane for the currently selected command
+fn render_explanation(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+    let explanation_block = Block::default()
+        .title(" Explanation: ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Magenta));
+
+    // Get the explanation for the currently selected command
+    let explanation_text = if app.generated_options.is_empty() {
+        String::new()
+    } else {
+        app.generated_options
+            .get(app.selected_index)
+            .map_or(String::new(), |opt| opt.explanation.clone())
+    };
+
+    let explanation = Paragraph::new(explanation_text)
+        .block(explanation_block)
+        .style(Style::default().fg(Color::White))
+        .wrap(ratatui::widgets::Wrap { trim: true });
+
+    frame.render_widget(explanation, area);
 }
 
 async fn run() -> Result<()> {

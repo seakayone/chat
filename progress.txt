@@ -4,6 +4,7 @@
 - CLI uses clap with derive macros for parsing
 - Ollama is used for LLM generation with streaming support
 - For ratatui Layout constraints, pass arrays directly (not `.as_ref()`) due to palette feature conflicts
+- For non-blocking async in TUI: spawn with `tokio::spawn`, check `is_finished()` each loop iteration
 
 ---
 
@@ -22,4 +23,101 @@
   - When using ratatui with the palette feature, avoid `.as_ref()` on constraint arrays due to type inference conflicts
   - Always restore terminal state even on errors using a pattern like `let result = ...; restore()?; result`
   - The existing `run()` function handles the original CLI streaming mode
+---
+
+## 2026-02-01 - US-002
+- Implemented text input widget for problem description
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Created `App` struct to hold TUI state (input, cursor_position, query_submitted)
+  - Implemented input methods: insert_char, delete_char, delete_char_forward, cursor navigation
+  - Added `render_input()` function with visible cursor (block cursor using inverted colors)
+  - Text input widget displayed at top of screen with border/label "Describe your problem:"
+  - Added keyboard handling for typing, backspace, delete, left/right arrows, Home/End
+  - Enter key submits the query (sets query_submitted flag)
+  - Changed exit key from 'q' to Esc (to allow typing 'q' in input)
+- **Learnings for future iterations:**
+  - Use inclusive range (`..=`) instead of `.. + 1` for single character slices (clippy::range_plus_one)
+  - The App struct will be extended for future stories (loading state, command list, etc.)
+  - Block cursor effect achieved with inverted bg/fg colors on a space character
+---
+
+## 2026-02-01 - US-003
+- Implemented loading state with spinner animation
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Added `AppState` enum with Input, Loading, and SelectingCommand variants
+  - Replaced `query_submitted` bool with `state: AppState` for proper state machine
+  - Added `loading_tick` counter for spinner animation
+  - Created `spinner_char()` method using braille spinner characters (⠋⠙⠸⠴)
+  - Added `is_input_enabled()` method to check if input should be accepted
+  - Added `tick_loading()` method called each render loop to animate spinner
+  - Created `render_loading()` function showing "⠋ Generating options..." with yellow styling
+  - Updated `render_input()` to dim the input box when disabled (gray border, no cursor)
+  - All input handlers now guarded with `if app.is_input_enabled()`
+  - Esc key returns to Input state when in Loading/SelectingCommand state
+  - Added `complete_loading()` method (unused for now, will be called when LLM responds)
+- **Learnings for future iterations:**
+  - Use `#[allow(dead_code)]` for variants/methods that will be used in future stories
+  - Clippy pedantic warns about `if not else` patterns - prefer positive condition in if branch
+  - Clippy pedantic warns about redundant else after break - just put the code after the if block
+  - Spinner animation achieved by dividing tick by 2 to slow it down (100ms poll * 2 = 200ms per frame)
+---
+
+## 2026-02-01 - US-004
+- Updated LLM prompt to generate multiple options with parsing
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Created `MULTI_OPTION_PROMPT` constant with structured instructions for 1-3 command options
+  - Output format: "N. command | explanation" for parseable numbered list
+  - Created `CommandOption` struct with `command` and `explanation` fields
+  - Implemented `parse_command_options()` to parse the expected format
+  - Implemented `generate_command_options()` async function for LLM interaction
+  - Added `generated_options: Vec<CommandOption>` field to App struct
+  - Made `run_tui()` and `run_tui_loop()` async for non-blocking LLM calls
+  - Spawn tokio task when entering Loading state, check completion each loop iteration
+  - Changed `submit_query()` to return bool indicating successful submission
+  - Gracefully handles 1-3 options; falls back to raw response as single command if parsing fails
+  - Cancel LLM task on Esc or Ctrl+C during loading
+- **Learnings for future iterations:**
+  - Use `tokio::spawn` with `JoinHandle::is_finished()` for non-blocking async in TUI event loop
+  - The generated_options field will be used in US-005 for displaying the command list
+  - LLM response fallback ensures user always gets a result even if format isn't perfect
+  - Clippy warns about unnecessary raw string hashes (`r#"..."#` vs `r"..."`)
+---
+
+## 2026-02-01 - US-005
+- Implemented display of command options as selectable list
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Added `selected_index: usize` field to App struct to track current selection
+  - Updated `complete_loading()` to reset `selected_index` to 0 when transitioning to SelectingCommand state
+  - Added `List` and `ListItem` imports from ratatui widgets
+  - Created `render_command_list()` function to display command options
+  - Each option shows: number (1-based) and command text
+  - Selected option highlighted with cyan background, black text, and bold modifier
+  - Non-selected options shown in white text
+  - Handles empty options case with helpful message
+  - Removed `#[allow(dead_code)]` from `SelectingCommand` variant and `generated_options` field
+- **Learnings for future iterations:**
+  - Use `ListItem::new(Line::from(Span::styled(...)))` for individually styled list items
+  - The `selected_index` field will be used in US-007 for arrow key navigation
+  - The explanation field (stored in `CommandOption`) will be displayed in US-006
+---
+
+## 2026-02-01 - US-006
+- Implemented explanation detail pane for selected command
+- Files changed: src/main.rs
+- **What was implemented:**
+  - Split the command selection area into two vertical sections: command list (top) and explanation pane (bottom)
+  - Used `Layout::default().constraints([Constraint::Length(5), Constraint::Min(3)])` to allocate 5 rows for command list, rest for explanation
+  - Created `render_explanation()` function to display the explanation for the currently selected command
+  - Explanation pane has magenta border with " Explanation: " title label
+  - Pane automatically updates when selection changes (reads from `app.generated_options[app.selected_index].explanation`)
+  - Added `Wrap { trim: true }` to handle long explanations that span multiple lines
+  - Gracefully handles empty options (shows empty explanation pane)
+- **Learnings for future iterations:**
+  - Use `Paragraph::wrap(ratatui::widgets::Wrap { trim: true })` for text that may exceed pane width
+  - The selected_index is already tracked; the explanation pane reads from this to show current selection
+  - Vertical layout with fixed size for list (Length) and flexible for explanation (Min) works well
 ---
