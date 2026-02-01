@@ -171,6 +171,34 @@ impl App {
             self.selected_index = 0;
         }
     }
+
+    /// Move selection up (with wrap-around: up from first goes to last)
+    fn select_previous(&mut self) {
+        if !self.generated_options.is_empty() {
+            if self.selected_index == 0 {
+                self.selected_index = self.generated_options.len() - 1;
+            } else {
+                self.selected_index -= 1;
+            }
+        }
+    }
+
+    /// Move selection down (with wrap-around: down from last goes to first)
+    fn select_next(&mut self) {
+        if !self.generated_options.is_empty() {
+            self.selected_index = (self.selected_index + 1) % self.generated_options.len();
+        }
+    }
+
+    /// Confirm the current selection
+    /// Returns the selected command if in `SelectingCommand` state with options, None otherwise
+    fn confirm_selection(&self) -> Option<&CommandOption> {
+        if self.state == AppState::SelectingCommand && !self.generated_options.is_empty() {
+            self.generated_options.get(self.selected_index)
+        } else {
+            None
+        }
+    }
 }
 
 /// Parse command options from LLM response
@@ -312,6 +340,39 @@ async fn run_tui() -> Result<()> {
     result
 }
 
+/// Render the entire UI based on app state
+fn render_ui(app: &App, frame: &mut ratatui::Frame) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([Constraint::Length(3), Constraint::Min(1)])
+        .split(frame.area());
+
+    // Render input box
+    render_input(app, frame, chunks[0]);
+
+    // Render status/content area based on state
+    match app.state {
+        AppState::Input => {
+            let help_text =
+                "Type your problem and press Enter to submit. Press Esc or Ctrl+C to quit.";
+            let status_block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray));
+            let status = Paragraph::new(help_text)
+                .block(status_block)
+                .style(Style::default().fg(Color::Gray));
+            frame.render_widget(status, chunks[1]);
+        }
+        AppState::Loading => {
+            render_loading(app, frame, chunks[1]);
+        }
+        AppState::SelectingCommand => {
+            render_command_list(app, frame, chunks[1]);
+        }
+    }
+}
+
 /// Main TUI event loop
 async fn run_tui_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
     let mut app = App::default();
@@ -320,37 +381,7 @@ async fn run_tui_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> 
     let mut llm_task: Option<tokio::task::JoinHandle<Result<Vec<CommandOption>>>> = None;
 
     loop {
-        terminal.draw(|frame| {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .margin(1)
-                .constraints([Constraint::Length(3), Constraint::Min(1)])
-                .split(frame.area());
-
-            // Render input box
-            render_input(&app, frame, chunks[0]);
-
-            // Render status/content area based on state
-            match app.state {
-                AppState::Input => {
-                    let help_text =
-                        "Type your problem and press Enter to submit. Press Esc or Ctrl+C to quit.";
-                    let status_block = Block::default()
-                        .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::DarkGray));
-                    let status = Paragraph::new(help_text)
-                        .block(status_block)
-                        .style(Style::default().fg(Color::Gray));
-                    frame.render_widget(status, chunks[1]);
-                }
-                AppState::Loading => {
-                    render_loading(&app, frame, chunks[1]);
-                }
-                AppState::SelectingCommand => {
-                    render_command_list(&app, frame, chunks[1]);
-                }
-            }
-        })?;
+        terminal.draw(|frame| render_ui(&app, frame))?;
 
         // Tick loading animation
         app.tick_loading();
@@ -406,6 +437,21 @@ async fn run_tui_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> 
                                 llm_task = Some(tokio::spawn(async move {
                                     generate_command_options(&query).await
                                 }));
+                            }
+                        }
+                        // Command selection navigation
+                        KeyCode::Up if app.state == AppState::SelectingCommand => {
+                            app.select_previous();
+                        }
+                        KeyCode::Down if app.state == AppState::SelectingCommand => {
+                            app.select_next();
+                        }
+                        KeyCode::Enter if app.state == AppState::SelectingCommand => {
+                            // Confirm selection - for now, just print selected and exit
+                            if let Some(selected) = app.confirm_selection() {
+                                // Store the command for later use (US-009 will handle pasting)
+                                let _selected_command = selected.command.clone();
+                                break;
                             }
                         }
                         KeyCode::Backspace if app.is_input_enabled() => app.delete_char(),
