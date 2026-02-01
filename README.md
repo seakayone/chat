@@ -36,21 +36,36 @@ cargo run
 
 Install the chatbot by placing the binary from `target/release/chat` in your path.
 
+## Configuration
+
+The model can be configured via (in priority order):
+1. `CHAT_MODEL` environment variable
+2. Config file (`~/Library/Application Support/chat/config.toml` on macOS, `~/.config/chat/config.toml` on Linux):
+   ```toml
+   model = "qwen3-coder:latest"
+   ```
+3. Default: `qwen3-coder:latest`
+
 ## Usage
 
-For now the chat is a simple terminal chatbot.
-You can chat with it by running:
+Run the TUI:
 
 ```zsh
 chat
 ```
 
+**Keyboard shortcuts:**
+- `Enter` - Submit query / Select command
+- `↑/↓` - Navigate commands or history
+- `r` - Regenerate options
+- `x` - Delete history entry
+- `Esc` - Cancel / Exit
+
+Query history is saved automatically and shown as a filterable dropdown while typing.
+
 ## Future Work
 
 - Add a non-interactive mode and execute the commands directly
-- Add chat history
-- Add a feature which explains the generated command
-- Make it configurable to use different LLMs
 - Make it configurable to support different additional tools installed on the machine
 - Add support for more shells
 - Add support for other OSs

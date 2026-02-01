@@ -22,7 +22,19 @@ cargo run -- run
 cargo clippy
 ```
 
-**Prerequisites:** Ollama must be running (`ollama serve`) with `qwen3-coder:latest` model (use `ollama pull qwen3-coder:latest` to pull).
+**Prerequisites:** Ollama must be running (`ollama serve`) with the configured model installed.
+
+## Configuration
+
+The model can be configured via (in priority order):
+1. `CHAT_MODEL` environment variable
+2. Config file (`~/Library/Application Support/chat/config.toml` on macOS, `~/.config/chat/config.toml` on Linux):
+   ```toml
+   model = "qwen3-coder:latest"
+   ```
+3. Default: `qwen3-coder:latest`
+
+On startup, the app verifies Ollama is running and the model is installed, showing a progress indicator while loading.
 
 ## Architecture
 
@@ -46,11 +58,19 @@ The application provides an interactive terminal interface with:
 5. **Clipboard integration** - Selected command is copied to clipboard on exit
 
 **Keyboard shortcuts:**
-- `Enter` - Submit query / Select command
-- `↑/↓` - Navigate command options
+- `Enter` - Submit query / Select command / Select history item
+- `↑/↓` - Navigate command options or history dropdown
+- `←/→` - Move cursor in input
+- `Home/End` - Jump to start/end of input
 - `r` - Regenerate options with same query
+- `x` - Delete selected history entry
 - `Esc` - Cancel / Return to input / Exit
 - `Ctrl+C` - Force exit
+
+**History:**
+- Previous queries are saved and shown in a dropdown while typing
+- History is filtered as you type (case-insensitive)
+- Stored in `~/Library/Caches/chat/history` (macOS) or `~/.cache/chat/history` (Linux)
 
 ### Legacy CLI Mode (`run` subcommand)
 
