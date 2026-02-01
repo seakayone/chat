@@ -40,9 +40,9 @@ fn get_config_path() -> Option<PathBuf> {
 }
 
 /// Check if Ollama API is running by calling GET /api/tags.
-/// Returns Ok(()) if Ollama is reachable, Err with message otherwise.
+/// Returns Ok with list of model names if Ollama is reachable, Err with message otherwise.
 /// Uses a 5 second timeout.
-async fn check_ollama_running() -> Result<(), String> {
+async fn check_ollama_running() -> Result<Vec<String>, String> {
     let ollama = Ollama::default();
 
     // Use tokio timeout to limit the check to 5 seconds
@@ -53,8 +53,28 @@ async fn check_ollama_running() -> Result<(), String> {
     .await;
 
     match result {
-        Ok(Ok(_)) => Ok(()),
-        Ok(Err(_)) | Err(_) => Err("Error: Ollama is not running. Please start Ollama and try again.".to_string()),
+        Ok(Ok(models)) => {
+            // Extract model names from the response
+            let model_names: Vec<String> = models.into_iter().map(|m| m.name).collect();
+            Ok(model_names)
+        }
+        Ok(Err(_)) | Err(_) => {
+            Err("Error: Ollama is not running. Please start Ollama and try again.".to_string())
+        }
+    }
+}
+
+/// Check if the configured model is installed.
+/// Returns Ok(()) if model is found in the list, Err with message otherwise.
+fn check_model_installed(model_name: &str, installed_models: &[String]) -> Result<(), String> {
+    // Check if the model name appears in the installed models list
+    // Model names in Ollama can include tags (e.g., "llama2:latest")
+    if installed_models.iter().any(|m| m == model_name) {
+        Ok(())
+    } else {
+        Err(format!(
+            "Error: Model {model_name} is not installed. Run `ollama pull {model_name}` to install it."
+        ))
     }
 }
 
@@ -582,7 +602,17 @@ fn copy_to_clipboard(command: &str) -> Result<(), arboard::Error> {
 /// Run the TUI application
 async fn run_tui() -> Result<()> {
     // Check if Ollama is running before entering TUI mode
-    if let Err(msg) = check_ollama_running().await {
+    let installed_models = match check_ollama_running().await {
+        Ok(models) => models,
+        Err(msg) => {
+            eprintln!("{msg}");
+            std::process::exit(1);
+        }
+    };
+
+    // Check if the configured model is installed
+    let model_name = get_model_name();
+    if let Err(msg) = check_model_installed(&model_name, &installed_models) {
         eprintln!("{msg}");
         std::process::exit(1);
     }
