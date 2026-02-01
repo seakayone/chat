@@ -1,19 +1,69 @@
 {
   "project": "Chat",
-  "branchName": "ralph/history-delete-hint",
-  "description": "History Delete Hint - Add visual hint showing users can press 'x' to delete selected history entry",
+  "branchName": "ralph/ollama-startup-check",
+  "description": "Ollama Startup Check - Validate Ollama API and model availability at startup with clear error messages",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Show delete hint in help text when entry selected",
-      "description": "As a user, I want to see that I can press 'x' to delete so I can remove unwanted history entries.",
+      "title": "Read model name from configuration",
+      "description": "As a user, I want to configure which model to use via environment variable or config file so I can switch models without recompiling.",
       "acceptanceCriteria": [
-        "Help text shows 'x Delete' when a history entry is selected",
-        "Delete hint not shown when no entry is selected",
-        "Hint integrates with existing help text style (e.g., '↑/↓ Navigate  Enter Select  x Delete  Esc Quit')",
+        "Check for CHAT_MODEL environment variable first",
+        "Fall back to config file using dirs::config_dir() (macOS: ~/Library/Application Support/chat/config.toml, Linux: ~/.config/chat/config.toml)",
+        "Fall back to default model (qwen3-coder:latest) if neither is set",
+        "Remove hardcoded MODEL_NAME constant in favor of runtime configuration",
+        "Add toml and serde crates for config parsing",
         "Typecheck passes"
       ],
       "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Check Ollama API is running",
+      "description": "As a user, I want the app to verify Ollama is running at startup so I get a clear error instead of a confusing failure later.",
+      "acceptanceCriteria": [
+        "On startup, call GET /api/tags to check if Ollama is running",
+        "If connection fails, print to stderr: 'Error: Ollama is not running. Please start Ollama and try again.'",
+        "Application exits with non-zero exit code (1) on failure",
+        "Check completes within reasonable timeout (5 seconds)",
+        "Check runs before setup_terminal() is called (before TUI mode)",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Check model is installed",
+      "description": "As a user, I want the app to verify my configured model exists so I know immediately if I need to pull it.",
+      "acceptanceCriteria": [
+        "Parse response from GET /api/tags to get list of installed models",
+        "Check if configured model name appears in the models list",
+        "If model not found, print to stderr: 'Error: Model {model_name} is not installed. Run `ollama pull {model_name}` to install it.'",
+        "Application exits with non-zero exit code (1) on failure",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Load model with progress indicator",
+      "description": "As a user, I want to see feedback when the model is loading so I know the app is working and not frozen.",
+      "acceptanceCriteria": [
+        "Call GET /api/ps to check if model is already loaded in memory",
+        "If model not loaded, call POST /api/generate with empty prompt to trigger load",
+        "Display spinner with message 'Loading model {model_name}...' during load",
+        "Spinner uses same braille characters as existing loading indicator (⠋⠙⠸⠴)",
+        "Once model is loaded, proceed to normal TUI startup",
+        "Spinner works in normal terminal mode (before TUI alternate screen)",
+        "Typecheck passes"
+      ],
+      "priority": 4,
       "passes": true,
       "notes": ""
     }

@@ -78,6 +78,91 @@ fn check_model_installed(model_name: &str, installed_models: &[String]) -> Resul
     }
 }
 
+/// Response structure for /api/ps endpoint (running models)
+#[derive(Deserialize)]
+struct RunningModelsResponse {
+    models: Vec<RunningModel>,
+}
+
+/// A model that is currently loaded in memory
+#[derive(Deserialize)]
+struct RunningModel {
+    /// The name of the running model (e.g., "qwen3-coder:latest")
+    model: String,
+}
+
+/// Check if the model is currently loaded in memory by calling GET /api/ps.
+/// Returns Ok(true) if model is loaded, Ok(false) if not loaded, Err on connection error.
+async fn is_model_loaded(model_name: &str) -> Result<bool, String> {
+    let ollama = Ollama::default();
+    let url = format!("{}api/ps", ollama.url_str());
+
+    // Use a simple HTTP client from reqwest (via ollama-rs internal client pattern)
+    let client = reqwest::Client::new();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(5), client.get(&url).send())
+        .await
+        .map_err(|_| "Timeout checking running models".to_string())?
+        .map_err(|e| format!("Failed to check running models: {e}"))?;
+
+    if !result.status().is_success() {
+        return Err("Failed to get running models".to_string());
+    }
+
+    let response: RunningModelsResponse = result
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse running models response: {e}"))?;
+
+    // Check if our model is in the running models list
+    Ok(response.models.iter().any(|m| m.model == model_name))
+}
+
+/// Load a model into memory by calling POST /api/generate with empty prompt.
+/// Shows a spinner while loading. Returns Ok(()) when model is loaded, Err on failure.
+async fn load_model_with_spinner(model_name: &str) -> Result<(), String> {
+    // Spinner characters (same as TUI loading indicator)
+    const SPINNER_CHARS: [char; 4] = ['⠋', '⠙', '⠸', '⠴'];
+
+    // Print initial loading message
+    eprint!("\r{} Loading model {model_name}...", SPINNER_CHARS[0]);
+
+    let ollama = Ollama::default();
+    let request = GenerationRequest::new(model_name.to_string(), String::new());
+
+    // Spawn the loading task
+    let load_task = tokio::spawn(async move { ollama.generate(request).await });
+
+    // Animate spinner while waiting for model to load
+    let mut tick = 0usize;
+    loop {
+        // Check if loading is complete
+        if load_task.is_finished() {
+            break;
+        }
+
+        // Update spinner
+        tick = tick.wrapping_add(1);
+        let spinner = SPINNER_CHARS[tick % SPINNER_CHARS.len()];
+        eprint!("\r{spinner} Loading model {model_name}...");
+
+        // Sleep for animation frame (200ms per frame like TUI)
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+
+    // Get the result
+    let result = load_task
+        .await
+        .map_err(|e| format!("Model loading task failed: {e}"))?;
+
+    // Clear the spinner line
+    eprint!("\r\x1b[K"); // Clear line
+
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("Failed to load model: {e}")),
+    }
+}
+
 /// Load the model name from configuration.
 /// Priority: 1. `CHAT_MODEL` env var, 2. config file, 3. default
 fn get_model_name() -> String {
@@ -615,6 +700,29 @@ async fn run_tui() -> Result<()> {
     if let Err(msg) = check_model_installed(&model_name, &installed_models) {
         eprintln!("{msg}");
         std::process::exit(1);
+    }
+
+    // Check if model is loaded, and load it with spinner if not
+    match is_model_loaded(&model_name).await {
+        Ok(true) => {
+            // Model already loaded, proceed
+        }
+        Ok(false) => {
+            // Model not loaded, load it with spinner
+            if let Err(msg) = load_model_with_spinner(&model_name).await {
+                eprintln!("{msg}");
+                std::process::exit(1);
+            }
+        }
+        Err(msg) => {
+            // Error checking model status - try to load anyway
+            // This handles edge cases where /api/ps might fail but generate still works
+            if let Err(load_msg) = load_model_with_spinner(&model_name).await {
+                eprintln!("Warning: Could not check model status: {msg}");
+                eprintln!("{load_msg}");
+                std::process::exit(1);
+            }
+        }
     }
 
     let mut terminal = setup_terminal()?;

@@ -8,7 +8,8 @@
       "Bash(cargo clean:*)",
       "Bash(cargo build:*)",
       "Bash(RUSTFLAGS=\"-W unused\" cargo check:*)",
-      "Bash(cargo tree:*)"
+      "Bash(cargo tree:*)",
+      "WebFetch(domain:docs.ollama.com)"
     ]
   }
 }
