@@ -1,5 +1,9 @@
 #![warn(clippy::all, clippy::pedantic)]
 
+use chat::{
+    llm::ollama::{check_model_installed, check_ollama_running, is_model_loaded},
+    tui::config::{get_history_path, get_model_name},
+};
 use clap::Parser;
 use color_eyre::Result;
 use crossterm::{
@@ -16,106 +20,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Terminal,
 };
-use serde::Deserialize;
 use std::io;
-use std::path::PathBuf;
 use tokio_stream::StreamExt;
-
-/// Default model name used when no configuration is provided
-const DEFAULT_MODEL_NAME: &str = "qwen3-coder:latest";
-
-/// Configuration file structure
-#[derive(Deserialize, Default)]
-struct Config {
-    /// Model name to use for LLM generation
-    model: Option<String>,
-}
-
-/// Get the platform-appropriate path for the config file.
-/// On macOS: ~/Library/Application Support/chat/config.toml
-/// On Linux: ~/.config/chat/config.toml
-fn get_config_path() -> Option<PathBuf> {
-    let config_dir = dirs::config_dir()?;
-    Some(config_dir.join("chat").join("config.toml"))
-}
-
-/// Check if Ollama API is running by calling GET /api/tags.
-/// Returns Ok with list of model names if Ollama is reachable, Err with message otherwise.
-/// Uses a 5 second timeout.
-async fn check_ollama_running() -> Result<Vec<String>, String> {
-    let ollama = Ollama::default();
-
-    // Use tokio timeout to limit the check to 5 seconds
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        ollama.list_local_models(),
-    )
-    .await;
-
-    match result {
-        Ok(Ok(models)) => {
-            // Extract model names from the response
-            let model_names: Vec<String> = models.into_iter().map(|m| m.name).collect();
-            Ok(model_names)
-        }
-        Ok(Err(_)) | Err(_) => {
-            Err("Error: Ollama is not running. Please start Ollama and try again.".to_string())
-        }
-    }
-}
-
-/// Check if the configured model is installed.
-/// Returns Ok(()) if model is found in the list, Err with message otherwise.
-fn check_model_installed(model_name: &str, installed_models: &[String]) -> Result<(), String> {
-    // Check if the model name appears in the installed models list
-    // Model names in Ollama can include tags (e.g., "llama2:latest")
-    if installed_models.iter().any(|m| m == model_name) {
-        Ok(())
-    } else {
-        Err(format!(
-            "Error: Model {model_name} is not installed. Run `ollama pull {model_name}` to install it."
-        ))
-    }
-}
-
-/// Response structure for /api/ps endpoint (running models)
-#[derive(Deserialize)]
-struct RunningModelsResponse {
-    models: Vec<RunningModel>,
-}
-
-/// A model that is currently loaded in memory
-#[derive(Deserialize)]
-struct RunningModel {
-    /// The name of the running model (e.g., "qwen3-coder:latest")
-    model: String,
-}
-
-/// Check if the model is currently loaded in memory by calling GET /api/ps.
-/// Returns Ok(true) if model is loaded, Ok(false) if not loaded, Err on connection error.
-async fn is_model_loaded(model_name: &str) -> Result<bool, String> {
-    let ollama = Ollama::default();
-    let url = format!("{}api/ps", ollama.url_str());
-
-    // Use a simple HTTP client from reqwest (via ollama-rs internal client pattern)
-    let client = reqwest::Client::new();
-    let result = tokio::time::timeout(std::time::Duration::from_secs(5), client.get(&url).send())
-        .await
-        .map_err(|_| "Timeout checking running models".to_string())?
-        .map_err(|e| format!("Failed to check running models: {e}"))?;
-
-    if !result.status().is_success() {
-        return Err("Failed to get running models".to_string());
-    }
-
-    let response: RunningModelsResponse = result
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse running models response: {e}"))?;
-
-    // Check if our model is in the running models list
-    Ok(response.models.iter().any(|m| m.model == model_name))
-}
 
 /// Load a model into memory by calling POST /api/generate with empty prompt.
 /// Shows a spinner while loading. Returns Ok(()) when model is loaded, Err on failure.
@@ -161,49 +67,6 @@ async fn load_model_with_spinner(model_name: &str) -> Result<(), String> {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("Failed to load model: {e}")),
     }
-}
-
-/// Load the model name from configuration.
-/// Priority: 1. `CHAT_MODEL` env var, 2. config file, 3. default
-fn get_model_name() -> String {
-    // 1. Check environment variable first
-    if let Ok(model) = std::env::var("CHAT_MODEL") {
-        if !model.trim().is_empty() {
-            return model.trim().to_string();
-        }
-    }
-
-    // 2. Try to read from config file
-    if let Some(config_path) = get_config_path() {
-        if let Ok(contents) = std::fs::read_to_string(&config_path) {
-            if let Ok(config) = toml::from_str::<Config>(&contents) {
-                if let Some(model) = config.model {
-                    if !model.trim().is_empty() {
-                        return model.trim().to_string();
-                    }
-                }
-            }
-        }
-    }
-
-    // 3. Fall back to default
-    DEFAULT_MODEL_NAME.to_string()
-}
-
-/// Get the platform-appropriate path for the history file.
-/// On macOS: ~/Library/Caches/chat/history
-/// On Linux: ~/.cache/chat/history
-/// Creates parent directories if they don't exist.
-fn get_history_path() -> Option<PathBuf> {
-    let cache_dir = dirs::cache_dir()?;
-    let history_dir = cache_dir.join("chat");
-
-    // Create parent directories if they don't exist
-    if !history_dir.exists() {
-        std::fs::create_dir_all(&history_dir).ok()?;
-    }
-
-    Some(history_dir.join("history"))
 }
 
 /// Load history from the cache file.
@@ -507,7 +370,7 @@ impl App {
             .and_then(|idx| filtered.iter().position(|(orig_idx, _)| *orig_idx == idx));
 
         let new_pos = match current_pos {
-            None => 0, // No selection, go to first
+            None => 0,                               // No selection, go to first
             Some(pos) => (pos + 1) % filtered.len(), // Wrap around
         };
 
@@ -1025,12 +888,7 @@ fn render_input(app: &App, frame: &mut ratatui::Frame, area: ratatui::layout::Re
             // Cursor at end of text (show block cursor)
             Line::from(vec![
                 Span::raw(&app.input),
-                Span::styled(
-                    " ",
-                    Style::default()
-                        .bg(Color::White)
-                        .fg(Color::Black),
-                ),
+                Span::styled(" ", Style::default().bg(Color::White).fg(Color::Black)),
             ])
         }
     } else {
@@ -1221,4 +1079,3 @@ fn render_explanation(app: &App, frame: &mut ratatui::Frame, area: ratatui::layo
 
     frame.render_widget(explanation, area);
 }
-
